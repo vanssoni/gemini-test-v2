@@ -1,0 +1,29 @@
+{
+  "name": "pdf-extraction-comparison",
+  "version": "1.0.0",
+  "description": "Compare PDF text extraction between AWS Textract and Google Gemini",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "pdf",
+    "textract",
+    "gemini",
+    "ocr",
+    "text-extraction"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "aws-sdk": "^2.1498.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
+    "uuid": "^8.3.2"
+  }
+}
