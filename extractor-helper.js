@@ -1,19 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-
-// Polyfills for fetch in Node.js < 18
-if (!globalThis.fetch) {
-    const fetch = require('node-fetch');
-    globalThis.fetch = fetch;
-    globalThis.Headers = fetch.Headers;
-    globalThis.Response = fetch.Response;
-    globalThis.Request = fetch.Request;
-}
+const OpenAI = require('openai');
 
 class ExtractorHelper {
     constructor() {
         this.apiKey = process.env.OPENAI_API_KEY;
         this.config = this.loadConfig();
+        this.openai = new OpenAI({
+            apiKey: this.apiKey,
+        });
     }
 
     /**
@@ -49,26 +44,16 @@ class ExtractorHelper {
             const messages = [
                 {
                     role: "system",
-                    content: [
-                        {
-                            type: "text",
-                            text: this.config.prompt
-                        }
-                    ]
+                    content: this.config.prompt
                 },
                 {
                     role: "user",
-                    content: [
-                        {
-                            type: "text",
-                            text: pdfText
-                        }
-                    ]
+                    content: pdfText
                 }
             ];
 
-            // Prepare request body
-            const requestBody = {
+            // Call OpenAI API using SDK (default timeout is 10 minutes)
+            const completion = await this.openai.chat.completions.create({
                 model: this.config.model,
                 messages: messages,
                 temperature: this.config.temperature,
@@ -76,37 +61,13 @@ class ExtractorHelper {
                 top_p: this.config.top_p,
                 frequency_penalty: this.config.frequency_penalty,
                 presence_penalty: this.config.presence_penalty
-            };
-
-            // 10 minute timeout for AI processing
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 600000);
-
-            // Call OpenAI API
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                body: JSON.stringify(requestBody),
-                signal: controller.signal
             });
 
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`OpenAI API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-            }
-
-            const data = await response.json();
-
-            if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            if (!completion.choices || !completion.choices[0] || !completion.choices[0].message) {
                 throw new Error('Invalid response from OpenAI API');
             }
 
-            return data.choices[0].message.content;
+            return completion.choices[0].message.content;
 
         } catch (error) {
             console.error('Extractor AI error:', error);

@@ -380,91 +380,92 @@ function formatErrorMessage(error, serviceName) {
 function formatTime(ms) {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
+}
 
-    function resetToUpload() {
-        clearFile();
-        uploadSection.style.display = 'block';
-        loadingSection.style.display = 'none';
-        resultsSection.style.display = 'none';
+function resetToUpload() {
+    clearFile();
+    uploadSection.style.display = 'block';
+    loadingSection.style.display = 'none';
+    resultsSection.style.display = 'none';
 
-        // Reset all results
-        geminiText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
-        textractText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
-        extractorText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
-        geminiInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
-        extractorInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
+    // Reset all results
+    geminiText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+    textractText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+    extractorText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+    geminiInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
+    extractorInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
 
-        geminiTime.querySelector('.time-value').textContent = '-';
-        textractTime.querySelector('.time-value').textContent = '-';
-        extractorTime.querySelector('.time-value').textContent = '-';
-        geminiInterpTime.querySelector('.time-value').textContent = '-';
-        extractorInterpTime.querySelector('.time-value').textContent = '-';
+    geminiTime.querySelector('.time-value').textContent = '-';
+    textractTime.querySelector('.time-value').textContent = '-';
+    extractorTime.querySelector('.time-value').textContent = '-';
+    geminiInterpTime.querySelector('.time-value').textContent = '-';
+    extractorInterpTime.querySelector('.time-value').textContent = '-';
 
-        geminiCharCount.textContent = '0 characters';
-        textractCharCount.textContent = '0 characters';
-        extractorCharCount.textContent = '0 characters';
-        geminiInterpCharCount.textContent = '0 characters';
-        extractorInterpCharCount.textContent = '0 characters';
+    geminiCharCount.textContent = '0 characters';
+    textractCharCount.textContent = '0 characters';
+    extractorCharCount.textContent = '0 characters';
+    geminiInterpCharCount.textContent = '0 characters';
+    extractorInterpCharCount.textContent = '0 characters';
+}
+
+async function copyToClipboard(text, button) {
+    try {
+        await navigator.clipboard.writeText(text);
+
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<span class="copy-icon">✓</span><span>Copied!</span>';
+        button.classList.add('copied');
+
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('copied');
+        }, 2000);
+    } catch (error) {
+        console.error('Failed to copy:', error);
+        alert('Failed to copy text to clipboard');
     }
+}
 
-    async function copyToClipboard(text, button) {
-        try {
-            await navigator.clipboard.writeText(text);
-
-            const originalHTML = button.innerHTML;
-            button.innerHTML = '<span class="copy-icon">✓</span><span>Copied!</span>';
-            button.classList.add('copied');
-
-            setTimeout(() => {
-                button.innerHTML = originalHTML;
-                button.classList.remove('copied');
-            }, 2000);
-        } catch (error) {
-            console.error('Failed to copy:', error);
-            alert('Failed to copy text to clipboard');
-        }
-    }
-
-    // Prompt Management Functions
-    function loadCustomPrompt() {
-        const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY);
-        if (savedPrompt) {
-            promptTextarea.value = savedPrompt;
-        } else {
-            promptTextarea.value = DEFAULT_GEMINI_PROMPT;
-        }
-    }
-
-    function getCustomPrompt() {
-        return localStorage.getItem(PROMPT_STORAGE_KEY) || null;
-    }
-
-    function openPromptModal() {
-        loadCustomPrompt();
-        promptModal.style.display = 'flex';
-    }
-
-    function closePromptModal() {
-        promptModal.style.display = 'none';
-    }
-
-    function saveCustomPrompt() {
-        const newPrompt = promptTextarea.value.trim();
-        if (newPrompt) {
-            localStorage.setItem(PROMPT_STORAGE_KEY, newPrompt);
-            closePromptModal();
-            // Show success feedback
-            const originalText = editPromptButton.innerHTML;
-            editPromptButton.innerHTML = '<span>✓</span>';
-            setTimeout(() => {
-                editPromptButton.innerHTML = originalText;
-            }, 2000);
-        } else {
-            alert('Prompt cannot be empty');
-        }
-    }
-
-    function resetToDefaultPrompt() {
+// Prompt Management Functions
+function loadCustomPrompt() {
+    const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY);
+    if (savedPrompt) {
+        promptTextarea.value = savedPrompt;
+    } else {
         promptTextarea.value = DEFAULT_GEMINI_PROMPT;
-        localStorage.removeItem(PROMPT_STORAGE_KEY);
     }
+}
+
+function getCustomPrompt() {
+    return localStorage.getItem(PROMPT_STORAGE_KEY) || null;
+}
+
+function openPromptModal() {
+    loadCustomPrompt();
+    promptModal.style.display = 'flex';
+}
+
+function closePromptModal() {
+    promptModal.style.display = 'none';
+}
+
+function saveCustomPrompt() {
+    const newPrompt = promptTextarea.value.trim();
+    if (newPrompt) {
+        localStorage.setItem(PROMPT_STORAGE_KEY, newPrompt);
+        closePromptModal();
+        // Show success feedback
+        const originalText = editPromptButton.innerHTML;
+        editPromptButton.innerHTML = '<span>✓</span>';
+        setTimeout(() => {
+            editPromptButton.innerHTML = originalText;
+        }, 2000);
+    } else {
+        alert('Prompt cannot be empty');
+    }
+}
+
+function resetToDefaultPrompt() {
+    promptTextarea.value = DEFAULT_GEMINI_PROMPT;
+    localStorage.removeItem(PROMPT_STORAGE_KEY);
+}
