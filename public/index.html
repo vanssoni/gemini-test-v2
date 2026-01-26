@@ -168,6 +168,68 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Interpretation Results Row -->
+            <h3 class="interpretation-section-title">Interpretation Results</h3>
+            <div class="comparison-grid interpretation-grid">
+                <!-- Gemini Interpretation Results -->
+                <div class="result-card gemini-interp-card">
+                    <div class="result-header">
+                        <div class="result-title-group">
+                            <div class="result-icon gemini-interp-icon">🔍</div>
+                            <div>
+                                <h3 class="result-title">Gemini Interpretation</h3>
+                                <p class="result-subtitle">Interpreted Report</p>
+                            </div>
+                        </div>
+                        <div class="result-time" id="geminiInterpTime">
+                            <span class="time-label">Time:</span>
+                            <span class="time-value">-</span>
+                        </div>
+                    </div>
+                    <div class="result-content">
+                        <div class="result-text" id="geminiInterpText">
+                            <p class="placeholder-text">Interpreted result will appear here...</p>
+                        </div>
+                    </div>
+                    <div class="result-footer">
+                        <button class="copy-button" id="copyGeminiInterp">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy Text</span>
+                        </button>
+                        <div class="char-count" id="geminiInterpCharCount">0 characters</div>
+                    </div>
+                </div>
+
+                <!-- Extractor Interpretation Results -->
+                <div class="result-card extractor-interp-card">
+                    <div class="result-header">
+                        <div class="result-title-group">
+                            <div class="result-icon extractor-interp-icon">📊</div>
+                            <div>
+                                <h3 class="result-title">Extractor Interpretation</h3>
+                                <p class="result-subtitle">Interpreted Report</p>
+                            </div>
+                        </div>
+                        <div class="result-time" id="extractorInterpTime">
+                            <span class="time-label">Time:</span>
+                            <span class="time-value">-</span>
+                        </div>
+                    </div>
+                    <div class="result-content">
+                        <div class="result-text" id="extractorInterpText">
+                            <p class="placeholder-text">Interpreted result will appear here...</p>
+                        </div>
+                    </div>
+                    <div class="result-footer">
+                        <button class="copy-button" id="copyExtractorInterp">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy Text</span>
+                        </button>
+                        <div class="char-count" id="extractorInterpCharCount">0 characters</div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Prompt Editor Modal -->

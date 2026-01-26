@@ -10,6 +10,8 @@
     --gradient-gemini: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     --gradient-textract: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     --gradient-extractor: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --gradient-gemini-interp: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+    --gradient-extractor-interp: linear-gradient(135deg, #10b981 0%, #059669 100%);
 
     --text-primary: #ffffff;
     --text-secondary: #a0aec0;
@@ -391,6 +393,33 @@ body::before {
     border-top: 3px solid var(--accent-extractor);
 }
 
+.gemini-interp-card {
+    border-top: 3px solid #a855f7;
+}
+
+.extractor-interp-card {
+    border-top: 3px solid #10b981;
+}
+
+.gemini-interp-icon {
+    background: rgba(168, 85, 247, 0.2);
+}
+
+.extractor-interp-icon {
+    background: rgba(16, 185, 129, 0.2);
+}
+
+.interpretation-section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1.5rem;
+    color: var(--text-primary);
+}
+
+.interpretation-grid {
+    grid-template-columns: repeat(2, 1fr);
+}
+
 .result-header {
     padding: 1.5rem;
     background: rgba(255, 255, 255, 0.03);
@@ -521,6 +550,29 @@ body::before {
 .placeholder-text {
     color: var(--text-muted);
     font-style: italic;
+}
+
+.error-box {
+    background: rgba(245, 87, 108, 0.1);
+    border: 1px solid rgba(245, 87, 108, 0.3);
+    border-radius: var(--border-radius-sm);
+    padding: 1rem;
+}
+
+.error-title {
+    color: #f5576c;
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    font-family: 'Inter', sans-serif;
+}
+
+.error-message {
+    color: #fca5a5;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    font-family: 'Inter', sans-serif;
+    word-break: break-word;
 }
 
 .result-footer {

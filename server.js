@@ -6,13 +6,14 @@ const path = require('path');
 const geminiHelper = require('./gemini-helper');
 const textractHelper = require('./textract-helper');
 const extractorHelper = require('./extractor-helper');
+const interpreterHelper = require('./interpreter-helper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
 
 // Configure multer for file uploads (store in memory)
@@ -72,7 +73,7 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
     }
 });
 
-// Upload and process with Textract endpoint (includes Extractor AI)
+// Upload and process with Textract endpoint (Textract only)
 app.post('/api/extract/textract', upload.single('pdf'), async (req, res) => {
     try {
         if (!req.file) {
@@ -80,62 +81,26 @@ app.post('/api/extract/textract', upload.single('pdf'), async (req, res) => {
         }
 
         const fileBuffer = req.file.buffer;
-        const textractStartTime = Date.now();
+        const startTime = Date.now();
 
         try {
-            // Step 1: Extract text with AWS Textract
-            const textractText = await textractHelper.extractTextFromPDF(fileBuffer, req.file.originalname);
-            const textractTime = Date.now() - textractStartTime;
+            const text = await textractHelper.extractTextFromPDF(fileBuffer, req.file.originalname);
+            const time = Date.now() - startTime;
 
-            // Step 2: Automatically process with Extractor AI
-            const extractorStartTime = Date.now();
-            let extractorResult = null;
-
-            try {
-                const extractorResponse = await extractorHelper.processExtractorAi(textractText);
-                extractorResult = {
-                    success: true,
-                    text: extractorResponse.text,
-                    time: extractorResponse.time,
-                    error: null
-                };
-            } catch (extractorError) {
-                console.error('Extractor AI error:', extractorError);
-                extractorResult = {
-                    success: false,
-                    text: '',
-                    time: extractorError.time || (Date.now() - extractorStartTime),
-                    error: extractorError.error || extractorError.message
-                };
-            }
-
-            // Return combined results
             res.json({
                 success: true,
-                textract: {
-                    text: textractText,
-                    time: textractTime,
-                    error: null
-                },
-                extractor: extractorResult,
+                service: 'textract',
+                text: text,
+                time: time,
                 error: null
             });
-
         } catch (error) {
             console.error('Textract error:', error);
             res.json({
                 success: false,
-                textract: {
-                    text: '',
-                    time: Date.now() - textractStartTime,
-                    error: error.message
-                },
-                extractor: {
-                    success: false,
-                    text: '',
-                    time: 0,
-                    error: 'Skipped due to Textract failure'
-                },
+                service: 'textract',
+                text: '',
+                time: Date.now() - startTime,
                 error: error.message
             });
         }
@@ -143,6 +108,87 @@ app.post('/api/extract/textract', upload.single('pdf'), async (req, res) => {
         console.error('Server error:', error);
         res.status(500).json({
             success: false,
+            service: 'textract',
+            error: error.message
+        });
+    }
+});
+
+// Extractor AI endpoint (takes text input)
+app.post('/api/extract/extractor', async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ error: 'No text provided' });
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const result = await extractorHelper.processExtractorAi(text);
+            res.json({
+                success: true,
+                service: 'extractor',
+                text: result.text,
+                time: result.time,
+                error: null
+            });
+        } catch (error) {
+            console.error('Extractor error:', error);
+            res.json({
+                success: false,
+                service: 'extractor',
+                text: '',
+                time: error.time || (Date.now() - startTime),
+                error: error.error || error.message
+            });
+        }
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            service: 'extractor',
+            error: error.message
+        });
+    }
+});
+
+// Interpretation AI endpoint (takes JSON text input)
+app.post('/api/interpret', async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ error: 'No text provided for interpretation' });
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const result = await interpreterHelper.processInterpretation(text);
+            res.json({
+                success: true,
+                service: 'interpreter',
+                text: result.text,
+                time: result.time,
+                error: null
+            });
+        } catch (error) {
+            console.error('Interpreter error:', error);
+            res.json({
+                success: false,
+                service: 'interpreter',
+                text: '',
+                time: error.time || (Date.now() - startTime),
+                error: error.error || error.message
+            });
+        }
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            service: 'interpreter',
             error: error.message
         });
     }

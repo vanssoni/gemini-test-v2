@@ -27,6 +27,17 @@ const extractorTime = document.getElementById('extractorTime');
 const extractorCharCount = document.getElementById('extractorCharCount');
 const copyExtractor = document.getElementById('copyExtractor');
 
+// Interpretation elements
+const geminiInterpText = document.getElementById('geminiInterpText');
+const geminiInterpTime = document.getElementById('geminiInterpTime');
+const geminiInterpCharCount = document.getElementById('geminiInterpCharCount');
+const copyGeminiInterp = document.getElementById('copyGeminiInterp');
+
+const extractorInterpText = document.getElementById('extractorInterpText');
+const extractorInterpTime = document.getElementById('extractorInterpTime');
+const extractorInterpCharCount = document.getElementById('extractorInterpCharCount');
+const copyExtractorInterp = document.getElementById('copyExtractorInterp');
+
 // Prompt Editor Elements
 const editPromptButton = document.getElementById('editPromptButton');
 const headerEditPromptButton = document.getElementById('headerEditPromptButton');
@@ -99,6 +110,8 @@ dropzone.addEventListener('click', (e) => {
 copyGemini.addEventListener('click', () => copyToClipboard(geminiText.textContent, copyGemini));
 copyTextract.addEventListener('click', () => copyToClipboard(textractText.textContent, copyTextract));
 copyExtractor.addEventListener('click', () => copyToClipboard(extractorText.textContent, copyExtractor));
+copyGeminiInterp.addEventListener('click', () => copyToClipboard(geminiInterpText.textContent, copyGeminiInterp));
+copyExtractorInterp.addEventListener('click', () => copyToClipboard(extractorInterpText.textContent, copyExtractorInterp));
 
 // Initialize
 loadCustomPrompt();
@@ -157,13 +170,18 @@ async function processFile() {
         resultsSection.style.display = 'block';
     }, 100);
 
-    // Reset results to loading state
+    // Reset all results to loading state
     geminiText.innerHTML = '<p class="placeholder-text">Processing with Gemini...</p>';
     textractText.innerHTML = '<p class="placeholder-text">Processing with Textract...</p>';
     extractorText.innerHTML = '<p class="placeholder-text">Waiting for Textract...</p>';
+    geminiInterpText.innerHTML = '<p class="placeholder-text">Waiting for Gemini...</p>';
+    extractorInterpText.innerHTML = '<p class="placeholder-text">Waiting for Extractor...</p>';
+
     geminiTime.querySelector('.time-value').textContent = '...';
     textractTime.querySelector('.time-value').textContent = '...';
     extractorTime.querySelector('.time-value').textContent = '...';
+    geminiInterpTime.querySelector('.time-value').textContent = '...';
+    extractorInterpTime.querySelector('.time-value').textContent = '...';
 
     // Get custom prompt from localStorage
     const customPrompt = getCustomPrompt();
@@ -179,50 +197,105 @@ async function processFile() {
     const formDataTextract = new FormData();
     formDataTextract.append('pdf', selectedFile);
 
-    // Call both endpoints in parallel
-    const geminiPromise = fetch('/api/extract/gemini', {
-        method: 'POST',
-        body: formDataGemini
-    }).then(res => res.json()).then(data => {
-        displayGeminiResult(data);
-    }).catch(error => {
-        console.error('Gemini request error:', error);
-        displayGeminiResult({
-            success: false,
-            error: error.message
-        });
-    });
+    // Flow 1: Gemini -> Gemini Interpretation (independent)
+    processGeminiFlow(formDataGemini);
 
-    const textractPromise = fetch('/api/extract/textract', {
-        method: 'POST',
-        body: formDataTextract
-    }).then(res => res.json()).then(data => {
-        // Handle combined Textract + Extractor response
-        displayTextractResult(data);
-        displayExtractorResult(data);
-    }).catch(error => {
-        console.error('Textract request error:', error);
-        displayTextractResult({
-            success: false,
-            error: error.message
+    // Flow 2: Textract -> Extractor -> Extractor Interpretation (chained)
+    processTextractFlow(formDataTextract);
+}
+
+// Gemini Flow: Gemini -> Gemini Interpretation
+async function processGeminiFlow(formData) {
+    try {
+        // Step 1: Call Gemini API
+        const geminiResponse = await fetch('/api/extract/gemini', {
+            method: 'POST',
+            body: formData
         });
-        displayExtractorResult({
-            success: false,
-            extractor: {
+        const geminiData = await geminiResponse.json();
+        displayGeminiResult(geminiData);
+
+        // Step 2: If Gemini succeeded, call Interpretation
+        if (geminiData.success && geminiData.text) {
+            geminiInterpText.innerHTML = '<p class="placeholder-text">Processing interpretation...</p>';
+
+            const interpResponse = await fetch('/api/interpret', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: geminiData.text })
+            });
+            const interpData = await interpResponse.json();
+            displayGeminiInterpResult(interpData);
+        } else {
+            displayGeminiInterpResult({
                 success: false,
-                error: 'Textract failed'
-            }
-        });
-    });
+                error: 'Gemini extraction failed'
+            });
+        }
+    } catch (error) {
+        console.error('Gemini flow error:', error);
+        displayGeminiResult({ success: false, error: error.message });
+        displayGeminiInterpResult({ success: false, error: 'Gemini extraction failed' });
+    }
+}
 
-    // Wait for both to complete
-    await Promise.allSettled([geminiPromise, textractPromise]);
+// Textract Flow: Textract -> Extractor -> Extractor Interpretation
+async function processTextractFlow(formData) {
+    try {
+        // Step 1: Call Textract API
+        const textractResponse = await fetch('/api/extract/textract', {
+            method: 'POST',
+            body: formData
+        });
+        const textractData = await textractResponse.json();
+        displayTextractResult(textractData);
+
+        // Step 2: If Textract succeeded, call Extractor
+        if (textractData.success && textractData.text) {
+            extractorText.innerHTML = '<p class="placeholder-text">Processing with Extractor AI...</p>';
+
+            const extractorResponse = await fetch('/api/extract/extractor', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: textractData.text })
+            });
+            const extractorData = await extractorResponse.json();
+            displayExtractorResult(extractorData);
+
+            // Step 3: If Extractor succeeded, call Interpretation
+            if (extractorData.success && extractorData.text) {
+                extractorInterpText.innerHTML = '<p class="placeholder-text">Processing interpretation...</p>';
+
+                const interpResponse = await fetch('/api/interpret', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: extractorData.text })
+                });
+                const interpData = await interpResponse.json();
+                displayExtractorInterpResult(interpData);
+            } else {
+                displayExtractorInterpResult({
+                    success: false,
+                    error: 'Extractor processing failed'
+                });
+            }
+        } else {
+            displayExtractorResult({ success: false, error: 'Textract extraction failed' });
+            displayExtractorInterpResult({ success: false, error: 'Textract extraction failed' });
+        }
+    } catch (error) {
+        console.error('Textract flow error:', error);
+        displayTextractResult({ success: false, error: error.message });
+        displayExtractorResult({ success: false, error: 'Textract extraction failed' });
+        displayExtractorInterpResult({ success: false, error: 'Textract extraction failed' });
+    }
 }
 
 function displayGeminiResult(data) {
     if (!data.success || data.error) {
-        geminiText.innerHTML = `<p style="color: #f5576c;">Error: ${data.error || 'Processing failed'}</p>`;
-        geminiTime.querySelector('.time-value').textContent = 'Failed';
+        const errorMsg = formatErrorMessage(data.error, 'Gemini');
+        geminiText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
+        geminiTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
         geminiTime.querySelector('.time-value').style.color = '#f5576c';
         geminiCharCount.textContent = '0 characters';
     } else {
@@ -235,19 +308,12 @@ function displayGeminiResult(data) {
 
 function displayTextractResult(data) {
     if (!data.success || data.error) {
-        textractText.innerHTML = `<p style="color: #f5576c;">Error: ${data.error || 'Processing failed'}</p>`;
-        textractTime.querySelector('.time-value').textContent = 'Failed';
+        const errorMsg = formatErrorMessage(data.error, 'Textract');
+        textractText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
+        textractTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
         textractTime.querySelector('.time-value').style.color = '#f5576c';
         textractCharCount.textContent = '0 characters';
-    } else if (data.textract) {
-        // Handle new combined response format
-        const textractData = data.textract;
-        textractText.textContent = textractData.text || 'No text extracted';
-        textractTime.querySelector('.time-value').textContent = formatTime(textractData.time);
-        textractTime.querySelector('.time-value').style.color = '#48bb78';
-        textractCharCount.textContent = `${textractData.text.length.toLocaleString()} characters`;
     } else {
-        // Fallback for old format (shouldn't happen)
         textractText.textContent = data.text || 'No text extracted';
         textractTime.querySelector('.time-value').textContent = formatTime(data.time);
         textractTime.querySelector('.time-value').style.color = '#48bb78';
@@ -256,30 +322,99 @@ function displayTextractResult(data) {
 }
 
 function displayExtractorResult(data) {
-    if (!data.extractor) {
-        extractorText.innerHTML = '<p style="color: #f5576c;">Error: No extractor data received</p>';
-        extractorTime.querySelector('.time-value').textContent = 'Failed';
-        extractorTime.querySelector('.time-value').style.color = '#f5576c';
-        extractorCharCount.textContent = '0 characters';
-        return;
-    }
-
-    const extractorData = data.extractor;
-
-    if (!extractorData.success || extractorData.error) {
-        extractorText.innerHTML = `<p style="color: #f5576c;">Error: ${extractorData.error || 'Processing failed'}</p>`;
-        extractorTime.querySelector('.time-value').textContent = 'Failed';
+    if (!data.success || data.error) {
+        const errorMsg = formatErrorMessage(data.error, 'Extractor AI');
+        extractorText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
+        extractorTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
         extractorTime.querySelector('.time-value').style.color = '#f5576c';
         extractorCharCount.textContent = '0 characters';
     } else {
-        extractorText.textContent = extractorData.text || 'No data extracted';
-        extractorTime.querySelector('.time-value').textContent = formatTime(extractorData.time);
+        extractorText.textContent = data.text || 'No data extracted';
+        extractorTime.querySelector('.time-value').textContent = formatTime(data.time);
         extractorTime.querySelector('.time-value').style.color = '#48bb78';
-        extractorCharCount.textContent = `${extractorData.text.length.toLocaleString()} characters`;
+        extractorCharCount.textContent = `${data.text.length.toLocaleString()} characters`;
     }
 }
 
+function displayGeminiInterpResult(data) {
+    if (!data.success || data.error) {
+        const errorMsg = formatErrorMessage(data.error, 'Interpretation');
+        geminiInterpText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
+        geminiInterpTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
+        geminiInterpTime.querySelector('.time-value').style.color = '#f5576c';
+        geminiInterpCharCount.textContent = '0 characters';
+    } else {
+        geminiInterpText.textContent = data.text || 'No interpretation';
+        geminiInterpTime.querySelector('.time-value').textContent = formatTime(data.time);
+        geminiInterpTime.querySelector('.time-value').style.color = '#48bb78';
+        geminiInterpCharCount.textContent = `${data.text.length.toLocaleString()} characters`;
+    }
+}
 
+function displayExtractorInterpResult(data) {
+    if (!data.success || data.error) {
+        const errorMsg = formatErrorMessage(data.error, 'Interpretation');
+        extractorInterpText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
+        extractorInterpTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
+        extractorInterpTime.querySelector('.time-value').style.color = '#f5576c';
+        extractorInterpCharCount.textContent = '0 characters';
+    } else {
+        extractorInterpText.textContent = data.text || 'No interpretation';
+        extractorInterpTime.querySelector('.time-value').textContent = formatTime(data.time);
+        extractorInterpTime.querySelector('.time-value').style.color = '#48bb78';
+        extractorInterpCharCount.textContent = `${data.text.length.toLocaleString()} characters`;
+    }
+}
+
+// Format error messages to be more user-friendly
+function formatErrorMessage(error, serviceName) {
+    if (!error) return `${serviceName} processing failed. Please try again.`;
+
+    const errorLower = error.toLowerCase();
+
+    // Timeout errors
+    if (errorLower.includes('timeout') || errorLower.includes('timed out') || errorLower.includes('etimedout')) {
+        return `⏱️ TIMEOUT: ${serviceName} request took too long to respond. Try a smaller file or try again later.`;
+    }
+
+    // Rate limit errors
+    if (errorLower.includes('rate limit') || errorLower.includes('429') || errorLower.includes('too many requests')) {
+        return `🚫 RATE LIMIT: Too many requests to ${serviceName}. Please wait a moment and try again.`;
+    }
+
+    // Authentication errors
+    if (errorLower.includes('api key') || errorLower.includes('unauthorized') || errorLower.includes('401') || errorLower.includes('authentication')) {
+        return `🔑 AUTH ERROR: ${serviceName} API key is invalid or missing. Check your configuration.`;
+    }
+
+    // Quota errors
+    if (errorLower.includes('quota') || errorLower.includes('insufficient') || errorLower.includes('billing')) {
+        return `💳 QUOTA ERROR: ${serviceName} quota exceeded or billing issue. Check your account.`;
+    }
+
+    // Network errors
+    if (errorLower.includes('network') || errorLower.includes('econnrefused') || errorLower.includes('enotfound') || errorLower.includes('fetch')) {
+        return `🌐 NETWORK ERROR: Could not connect to ${serviceName}. Check your internet connection.`;
+    }
+
+    // Token/context length errors
+    if (errorLower.includes('token') || errorLower.includes('context length') || errorLower.includes('too long')) {
+        return `📏 TOKEN LIMIT: Input too long for ${serviceName}. Try a smaller document.`;
+    }
+
+    // Server errors
+    if (errorLower.includes('500') || errorLower.includes('502') || errorLower.includes('503') || errorLower.includes('internal server')) {
+        return `🔧 SERVER ERROR: ${serviceName} is experiencing issues. Try again later.`;
+    }
+
+    // Invalid response
+    if (errorLower.includes('invalid') || errorLower.includes('malformed') || errorLower.includes('parse')) {
+        return `⚠️ INVALID RESPONSE: ${serviceName} returned an unexpected response. Try again.`;
+    }
+
+    // Return original error if no pattern matched
+    return `${serviceName} Error: ${error}`;
+}
 
 function formatTime(ms) {
     if (ms < 1000) return `${ms}ms`;
@@ -292,16 +427,24 @@ function resetToUpload() {
     loadingSection.style.display = 'none';
     resultsSection.style.display = 'none';
 
-    // Reset results
+    // Reset all results
     geminiText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
     textractText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
     extractorText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+    geminiInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
+    extractorInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
+
     geminiTime.querySelector('.time-value').textContent = '-';
     textractTime.querySelector('.time-value').textContent = '-';
     extractorTime.querySelector('.time-value').textContent = '-';
+    geminiInterpTime.querySelector('.time-value').textContent = '-';
+    extractorInterpTime.querySelector('.time-value').textContent = '-';
+
     geminiCharCount.textContent = '0 characters';
     textractCharCount.textContent = '0 characters';
     extractorCharCount.textContent = '0 characters';
+    geminiInterpCharCount.textContent = '0 characters';
+    extractorInterpCharCount.textContent = '0 characters';
 }
 
 async function copyToClipboard(text, button) {
