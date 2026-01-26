@@ -371,145 +371,100 @@ function displayExtractorInterpResult(data) {
     }
 }
 
-// Format error messages to be more user-friendly
+// Show raw error messages from AI/server directly
 function formatErrorMessage(error, serviceName) {
-    if (!error) return `${serviceName} processing failed. Please try again.`;
-
-    const errorLower = error.toLowerCase();
-
-    // Timeout errors
-    if (errorLower.includes('timeout') || errorLower.includes('timed out') || errorLower.includes('etimedout')) {
-        return `⏱️ TIMEOUT: ${serviceName} request took too long to respond. Try a smaller file or try again later.`;
-    }
-
-    // Rate limit errors
-    if (errorLower.includes('rate limit') || errorLower.includes('429') || errorLower.includes('too many requests')) {
-        return `🚫 RATE LIMIT: Too many requests to ${serviceName}. Please wait a moment and try again.`;
-    }
-
-    // Authentication errors
-    if (errorLower.includes('api key') || errorLower.includes('unauthorized') || errorLower.includes('401') || errorLower.includes('authentication')) {
-        return `🔑 AUTH ERROR: ${serviceName} API key is invalid or missing. Check your configuration.`;
-    }
-
-    // Quota errors
-    if (errorLower.includes('quota') || errorLower.includes('insufficient') || errorLower.includes('billing')) {
-        return `💳 QUOTA ERROR: ${serviceName} quota exceeded or billing issue. Check your account.`;
-    }
-
-    // Network errors
-    if (errorLower.includes('network') || errorLower.includes('econnrefused') || errorLower.includes('enotfound') || errorLower.includes('fetch')) {
-        return `🌐 NETWORK ERROR: Could not connect to ${serviceName}. Check your internet connection.`;
-    }
-
-    // Token/context length errors
-    if (errorLower.includes('token') || errorLower.includes('context length') || errorLower.includes('too long')) {
-        return `📏 TOKEN LIMIT: Input too long for ${serviceName}. Try a smaller document.`;
-    }
-
-    // Server errors
-    if (errorLower.includes('500') || errorLower.includes('502') || errorLower.includes('503') || errorLower.includes('internal server')) {
-        return `🔧 SERVER ERROR: ${serviceName} is experiencing issues. Try again later.`;
-    }
-
-    // Invalid response
-    if (errorLower.includes('invalid') || errorLower.includes('malformed') || errorLower.includes('parse')) {
-        return `⚠️ INVALID RESPONSE: ${serviceName} returned an unexpected response. Try again.`;
-    }
-
-    // Return original error if no pattern matched
-    return `${serviceName} Error: ${error}`;
+    if (!error) return `${serviceName} processing failed`;
+    return error;
 }
 
 function formatTime(ms) {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
-}
 
-function resetToUpload() {
-    clearFile();
-    uploadSection.style.display = 'block';
-    loadingSection.style.display = 'none';
-    resultsSection.style.display = 'none';
+    function resetToUpload() {
+        clearFile();
+        uploadSection.style.display = 'block';
+        loadingSection.style.display = 'none';
+        resultsSection.style.display = 'none';
 
-    // Reset all results
-    geminiText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
-    textractText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
-    extractorText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
-    geminiInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
-    extractorInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
+        // Reset all results
+        geminiText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+        textractText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+        extractorText.innerHTML = '<p class="placeholder-text">Extracted text will appear here...</p>';
+        geminiInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
+        extractorInterpText.innerHTML = '<p class="placeholder-text">Interpreted result will appear here...</p>';
 
-    geminiTime.querySelector('.time-value').textContent = '-';
-    textractTime.querySelector('.time-value').textContent = '-';
-    extractorTime.querySelector('.time-value').textContent = '-';
-    geminiInterpTime.querySelector('.time-value').textContent = '-';
-    extractorInterpTime.querySelector('.time-value').textContent = '-';
+        geminiTime.querySelector('.time-value').textContent = '-';
+        textractTime.querySelector('.time-value').textContent = '-';
+        extractorTime.querySelector('.time-value').textContent = '-';
+        geminiInterpTime.querySelector('.time-value').textContent = '-';
+        extractorInterpTime.querySelector('.time-value').textContent = '-';
 
-    geminiCharCount.textContent = '0 characters';
-    textractCharCount.textContent = '0 characters';
-    extractorCharCount.textContent = '0 characters';
-    geminiInterpCharCount.textContent = '0 characters';
-    extractorInterpCharCount.textContent = '0 characters';
-}
-
-async function copyToClipboard(text, button) {
-    try {
-        await navigator.clipboard.writeText(text);
-
-        const originalHTML = button.innerHTML;
-        button.innerHTML = '<span class="copy-icon">✓</span><span>Copied!</span>';
-        button.classList.add('copied');
-
-        setTimeout(() => {
-            button.innerHTML = originalHTML;
-            button.classList.remove('copied');
-        }, 2000);
-    } catch (error) {
-        console.error('Failed to copy:', error);
-        alert('Failed to copy text to clipboard');
+        geminiCharCount.textContent = '0 characters';
+        textractCharCount.textContent = '0 characters';
+        extractorCharCount.textContent = '0 characters';
+        geminiInterpCharCount.textContent = '0 characters';
+        extractorInterpCharCount.textContent = '0 characters';
     }
-}
 
-// Prompt Management Functions
-function loadCustomPrompt() {
-    const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY);
-    if (savedPrompt) {
-        promptTextarea.value = savedPrompt;
-    } else {
+    async function copyToClipboard(text, button) {
+        try {
+            await navigator.clipboard.writeText(text);
+
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<span class="copy-icon">✓</span><span>Copied!</span>';
+            button.classList.add('copied');
+
+            setTimeout(() => {
+                button.innerHTML = originalHTML;
+                button.classList.remove('copied');
+            }, 2000);
+        } catch (error) {
+            console.error('Failed to copy:', error);
+            alert('Failed to copy text to clipboard');
+        }
+    }
+
+    // Prompt Management Functions
+    function loadCustomPrompt() {
+        const savedPrompt = localStorage.getItem(PROMPT_STORAGE_KEY);
+        if (savedPrompt) {
+            promptTextarea.value = savedPrompt;
+        } else {
+            promptTextarea.value = DEFAULT_GEMINI_PROMPT;
+        }
+    }
+
+    function getCustomPrompt() {
+        return localStorage.getItem(PROMPT_STORAGE_KEY) || null;
+    }
+
+    function openPromptModal() {
+        loadCustomPrompt();
+        promptModal.style.display = 'flex';
+    }
+
+    function closePromptModal() {
+        promptModal.style.display = 'none';
+    }
+
+    function saveCustomPrompt() {
+        const newPrompt = promptTextarea.value.trim();
+        if (newPrompt) {
+            localStorage.setItem(PROMPT_STORAGE_KEY, newPrompt);
+            closePromptModal();
+            // Show success feedback
+            const originalText = editPromptButton.innerHTML;
+            editPromptButton.innerHTML = '<span>✓</span>';
+            setTimeout(() => {
+                editPromptButton.innerHTML = originalText;
+            }, 2000);
+        } else {
+            alert('Prompt cannot be empty');
+        }
+    }
+
+    function resetToDefaultPrompt() {
         promptTextarea.value = DEFAULT_GEMINI_PROMPT;
+        localStorage.removeItem(PROMPT_STORAGE_KEY);
     }
-}
-
-function getCustomPrompt() {
-    return localStorage.getItem(PROMPT_STORAGE_KEY) || null;
-}
-
-function openPromptModal() {
-    loadCustomPrompt();
-    promptModal.style.display = 'flex';
-}
-
-function closePromptModal() {
-    promptModal.style.display = 'none';
-}
-
-function saveCustomPrompt() {
-    const newPrompt = promptTextarea.value.trim();
-    if (newPrompt) {
-        localStorage.setItem(PROMPT_STORAGE_KEY, newPrompt);
-        closePromptModal();
-        // Show success feedback
-        const originalText = editPromptButton.innerHTML;
-        editPromptButton.innerHTML = '<span>✓</span>';
-        setTimeout(() => {
-            editPromptButton.innerHTML = originalText;
-        }, 2000);
-    } else {
-        alert('Prompt cannot be empty');
-    }
-}
-
-function resetToDefaultPrompt() {
-    promptTextarea.value = DEFAULT_GEMINI_PROMPT;
-    localStorage.removeItem(PROMPT_STORAGE_KEY);
-}
