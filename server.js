@@ -215,10 +215,14 @@ app.use((error, req, res, next) => {
 });
 
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📄 Upload PDFs to compare Gemini 2.0 Flash vs AWS Textract`);
 });
+
+// Disable server timeout for long-running AI requests
+server.timeout = 0; // No timeout
+server.keepAliveTimeout = 0; // No keep-alive timeout
 
 // Export for Vercel serverless
 module.exports = app;

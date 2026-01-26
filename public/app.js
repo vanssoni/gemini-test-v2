@@ -207,10 +207,11 @@ async function processFile() {
 // Gemini Flow: Gemini -> Gemini Interpretation
 async function processGeminiFlow(formData) {
     try {
-        // Step 1: Call Gemini API
+        // Step 1: Call Gemini API (no timeout - AI can take several minutes)
         const geminiResponse = await fetch('/api/extract/gemini', {
             method: 'POST',
-            body: formData
+            body: formData,
+            keepalive: false // Allow long-running requests
         });
         const geminiData = await geminiResponse.json();
         displayGeminiResult(geminiData);
@@ -222,14 +223,15 @@ async function processGeminiFlow(formData) {
             const interpResponse = await fetch('/api/interpret', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: geminiData.text })
+                body: JSON.stringify({ text: geminiData.text }),
+                keepalive: false
             });
             const interpData = await interpResponse.json();
             displayGeminiInterpResult(interpData);
         } else {
             displayGeminiInterpResult({
                 success: false,
-                error: 'Gemini extraction failed'
+                error: geminiData.error || 'Gemini extraction failed'
             });
         }
     } catch (error) {
@@ -242,10 +244,11 @@ async function processGeminiFlow(formData) {
 // Textract Flow: Textract -> Extractor -> Extractor Interpretation
 async function processTextractFlow(formData) {
     try {
-        // Step 1: Call Textract API
+        // Step 1: Call Textract API (no timeout - can take several minutes)
         const textractResponse = await fetch('/api/extract/textract', {
             method: 'POST',
-            body: formData
+            body: formData,
+            keepalive: false
         });
         const textractData = await textractResponse.json();
         displayTextractResult(textractData);
@@ -257,7 +260,8 @@ async function processTextractFlow(formData) {
             const extractorResponse = await fetch('/api/extract/extractor', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: textractData.text })
+                body: JSON.stringify({ text: textractData.text }),
+                keepalive: false
             });
             const extractorData = await extractorResponse.json();
             displayExtractorResult(extractorData);
@@ -269,18 +273,19 @@ async function processTextractFlow(formData) {
                 const interpResponse = await fetch('/api/interpret', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: extractorData.text })
+                    body: JSON.stringify({ text: extractorData.text }),
+                    keepalive: false
                 });
                 const interpData = await interpResponse.json();
                 displayExtractorInterpResult(interpData);
             } else {
                 displayExtractorInterpResult({
                     success: false,
-                    error: 'Extractor processing failed'
+                    error: extractorData.error || 'Extractor processing failed'
                 });
             }
         } else {
-            displayExtractorResult({ success: false, error: 'Textract extraction failed' });
+            displayExtractorResult({ success: false, error: textractData.error || 'Textract extraction failed' });
             displayExtractorInterpResult({ success: false, error: 'Textract extraction failed' });
         }
     } catch (error) {
