@@ -83,6 +83,10 @@ class InterpreterHelper {
                 requestBody.response_format = this.config.response_format;
             }
 
+            // 10 minute timeout for AI processing
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 600000);
+
             // Call OpenAI API
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -90,8 +94,11 @@ class InterpreterHelper {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.apiKey}`
                 },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify(requestBody),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));

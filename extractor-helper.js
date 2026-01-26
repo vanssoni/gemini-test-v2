@@ -78,6 +78,10 @@ class ExtractorHelper {
                 presence_penalty: this.config.presence_penalty
             };
 
+            // 10 minute timeout for AI processing
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 600000);
+
             // Call OpenAI API
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -85,8 +89,11 @@ class ExtractorHelper {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.apiKey}`
                 },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify(requestBody),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
@@ -94,7 +101,7 @@ class ExtractorHelper {
             }
 
             const data = await response.json();
-            
+
             if (!data.choices || !data.choices[0] || !data.choices[0].message) {
                 throw new Error('Invalid response from OpenAI API');
             }

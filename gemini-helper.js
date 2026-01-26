@@ -19,6 +19,8 @@ class GeminiHelper {
             generationConfig: {
                 temperature: 0.1, // Lower temperature for more consistent extraction
             },
+        }, {
+            timeout: 600000, // 10 minutes timeout
         });
     }
 
