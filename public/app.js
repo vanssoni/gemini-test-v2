@@ -302,23 +302,24 @@ async function processTextractFlow(formData) {
 }
 
 function displayGeminiResult(data) {
+    // Display images first (even if there's an error, show converted images)
+    if (data.images && data.images.length > 0) {
+        displayGridImages(data.images);
+    } else {
+        imagePreviewSection.style.display = 'none';
+    }
+
     if (!data.success || data.error) {
         const errorMsg = formatErrorMessage(data.error, 'Gemini');
         geminiText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
         geminiTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
         geminiTime.querySelector('.time-value').style.color = '#f5576c';
         geminiCharCount.textContent = '0 characters';
-        imagePreviewSection.style.display = 'none';
     } else {
         geminiText.textContent = data.text || 'No text extracted';
         geminiTime.querySelector('.time-value').textContent = formatTime(data.time);
         geminiTime.querySelector('.time-value').style.color = '#48bb78';
         geminiCharCount.textContent = `${data.text.length.toLocaleString()} characters`;
-
-        // Display grid images if available
-        if (data.images && data.images.length > 0) {
-            displayGridImages(data.images);
-        }
     }
 }
 

@@ -46,13 +46,14 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
             const result = await geminiHelper.extractTextFromPDF(fileBuffer, req.file.mimetype, customPrompt);
             const time = Date.now() - startTime;
 
+            // Result now includes error field - images are always returned if available
             res.json({
-                success: true,
+                success: !result.error,
                 service: 'gemini',
-                text: result.text,
-                images: result.images, // Base64 grid images
+                text: result.text || '',
+                images: result.images || [], // Always return images
                 time: time,
-                error: null
+                error: result.error
             });
         } catch (error) {
             console.error('Gemini error:', error);
@@ -60,6 +61,7 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
                 success: false,
                 service: 'gemini',
                 text: '',
+                images: [], // No images if conversion itself failed
                 time: Date.now() - startTime,
                 error: error.message
             });
