@@ -43,13 +43,14 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
         const startTime = Date.now();
 
         try {
-            const text = await geminiHelper.extractTextFromPDF(fileBuffer, req.file.mimetype, customPrompt);
+            const result = await geminiHelper.extractTextFromPDF(fileBuffer, req.file.mimetype, customPrompt);
             const time = Date.now() - startTime;
 
             res.json({
                 success: true,
                 service: 'gemini',
-                text: text,
+                text: result.text,
+                images: result.images, // Base64 grid images
                 time: time,
                 error: null
             });

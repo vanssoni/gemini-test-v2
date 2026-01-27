@@ -38,6 +38,11 @@ const extractorInterpTime = document.getElementById('extractorInterpTime');
 const extractorInterpCharCount = document.getElementById('extractorInterpCharCount');
 const copyExtractorInterp = document.getElementById('copyExtractorInterp');
 
+// Image preview elements
+const imagePreviewSection = document.getElementById('imagePreviewSection');
+const imagePreviewGrid = document.getElementById('imagePreviewGrid');
+const imageCount = document.getElementById('imageCount');
+
 // Prompt Editor Elements
 const editPromptButton = document.getElementById('editPromptButton');
 const headerEditPromptButton = document.getElementById('headerEditPromptButton');
@@ -303,11 +308,62 @@ function displayGeminiResult(data) {
         geminiTime.querySelector('.time-value').textContent = data.time ? formatTime(data.time) : 'Failed';
         geminiTime.querySelector('.time-value').style.color = '#f5576c';
         geminiCharCount.textContent = '0 characters';
+        imagePreviewSection.style.display = 'none';
     } else {
         geminiText.textContent = data.text || 'No text extracted';
         geminiTime.querySelector('.time-value').textContent = formatTime(data.time);
         geminiTime.querySelector('.time-value').style.color = '#48bb78';
         geminiCharCount.textContent = `${data.text.length.toLocaleString()} characters`;
+
+        // Display grid images if available
+        if (data.images && data.images.length > 0) {
+            displayGridImages(data.images);
+        }
+    }
+}
+
+function displayGridImages(images) {
+    imagePreviewSection.style.display = 'block';
+    imageCount.textContent = `${images.length} image${images.length > 1 ? 's' : ''}`;
+    imagePreviewGrid.innerHTML = '';
+
+    images.forEach((base64, index) => {
+        const container = document.createElement('div');
+        container.className = 'preview-image-container';
+
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${base64}`;
+        img.className = 'preview-image';
+        img.alt = `Grid ${index + 1}`;
+        img.title = `Click to open Grid ${index + 1} in new tab`;
+        img.onclick = () => openImageInNewTab(base64, `Grid ${index + 1}`);
+
+        const label = document.createElement('div');
+        label.className = 'preview-image-label';
+        label.textContent = `Grid ${index + 1}`;
+
+        container.appendChild(img);
+        container.appendChild(label);
+        imagePreviewGrid.appendChild(container);
+    });
+}
+
+// Open image in new tab using blob URL (works better than base64)
+function openImageInNewTab(base64, title) {
+    // Convert base64 to blob
+    const byteString = atob(base64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: 'image/png' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Open in new tab
+    const newTab = window.open(blobUrl, '_blank');
+    if (newTab) {
+        newTab.document.title = title;
     }
 }
 
@@ -406,6 +462,10 @@ function resetToUpload() {
     extractorCharCount.textContent = '0 characters';
     geminiInterpCharCount.textContent = '0 characters';
     extractorInterpCharCount.textContent = '0 characters';
+
+    // Reset image preview
+    imagePreviewSection.style.display = 'none';
+    imagePreviewGrid.innerHTML = '';
 }
 
 async function copyToClipboard(text, button) {
