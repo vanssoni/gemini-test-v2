@@ -33,29 +33,38 @@
         <section class="upload-section" id="uploadSection">
             <div class="upload-card">
                 <div class="upload-dropzone" id="dropzone">
-                    <div class="upload-icon">📤</div>
-                    <h2 class="upload-title">Upload PDF Document</h2>
-                    <p class="upload-description">Drag and drop your PDF here or click to browse</p>
-                    <input type="file" id="fileInput" accept=".pdf" hidden>
-                    <button class="upload-button" id="uploadButton">Choose File</button>
-                    <p class="upload-hint">Maximum file size: 20MB</p>
+                    <!-- Upload Image/Icon -->
+                    <img src="../var/folders/k5/mtqmh5597175sn455r1mr9040000gn/uploadFile-D4mS2P4M.svg" alt="Upload"
+                        class="upload-image" />
+                    <div style="margin-top: -13px;">
+                        <p class="upload-description">
+                            Drag & Drop or Click to Upload
+                        </p>
+                        <input type="file" id="fileInput" accept=".pdf" hidden>
+                        <button class="upload-button" id="uploadButton" style="display: none;">
+                            Choose File
+                        </button>
+                        <p class="upload-hint">PDF file only - Max file size 20MB</p>
+                    </div>
                 </div>
-                <div class="file-info" id="fileInfo" style="display: none;">
+
+                <div class="file-info" id="fileInfo">
                     <div class="file-details">
-                        <span class="file-icon">📄</span>
+                        <img src="../var/folders/k5/mtqmh5597175sn455r1mr9040000gn/download.svg" alt="Upload"
+                            class="upload-pdf" />
                         <div class="file-text">
                             <p class="file-name" id="fileName"></p>
-                            <p class="file-size" id="fileSize"></p>
+                            <p class="file-size" id="fileSize" style="display: none;"></p>
                         </div>
                         <button class="remove-button" id="removeButton">✕</button>
                     </div>
-                    <button class="process-button" id="processButton">
-                        <span class="button-text">Extract Text</span>
-                        <span class="button-icon">→</span>
-                    </button>
                 </div>
+                <button class="process-button" id="processButton" style="margin-top: 15px">
+                    <span class="button-text">Upload File</span>
+                </button>
             </div>
         </section>
+
 
         <!-- Loading Section -->
         <section class="loading-section" id="loadingSection" style="display: none;">
@@ -82,12 +91,13 @@
                         <div class="result-title-group">
                             <div class="result-icon gemini-icon">🤖</div>
                             <div>
-                                <h3 class="result-title">Google Gemini 3 pro</h3>
+                                <h3 class="result-title">Gemini 3 pro</h3>
                                 <p class="result-subtitle">Fast & Efficient</p>
                             </div>
                         </div>
                         <div class="result-header-actions">
-                            <button class="edit-prompt-button" id="editPromptButton" title="Edit Prompt">
+                            <button class="edit-prompt-button" id="editPromptButton" title="Edit Prompt"
+                                style="display: none;">
                                 <span>✏️</span>
                             </button>
                             <div class="result-time" id="geminiTime">
@@ -103,19 +113,16 @@
                     </div>
                     <div class="result-footer">
                         <button class="copy-button" id="copyGemini">
-                            <span class="copy-icon">📋</span>
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
                             <span>Copy Text</span>
                         </button>
                         <div class="char-count" id="geminiCharCount">0 characters</div>
-                    </div>
-                    <!-- Image Preview Section -->
-                    <div class="image-preview-section" id="imagePreviewSection" style="display: none;">
-                        <div class="image-preview-header">
-                            <span class="image-preview-title">📷 Grid Images Sent to Gemini</span>
-                            <span class="image-count" id="imageCount">0 images</span>
-                        </div>
-                        <div class="image-preview-grid" id="imagePreviewGrid">
-                        </div>
                     </div>
                 </div>
 
@@ -141,7 +148,13 @@
                     </div>
                     <div class="result-footer">
                         <button class="copy-button" id="copyTextract">
-                            <span class="copy-icon">📋</span>
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
                             <span>Copy Text</span>
                         </button>
                         <div class="char-count" id="textractCharCount">0 characters</div>
@@ -170,7 +183,13 @@
                     </div>
                     <div class="result-footer">
                         <button class="copy-button" id="copyExtractor">
-                            <span class="copy-icon">📋</span>
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
                             <span>Copy Text</span>
                         </button>
                         <div class="char-count" id="extractorCharCount">0 characters</div>
@@ -203,7 +222,13 @@
                     </div>
                     <div class="result-footer">
                         <button class="copy-button" id="copyGeminiInterp">
-                            <span class="copy-icon">📋</span>
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
                             <span>Copy Text</span>
                         </button>
                         <div class="char-count" id="geminiInterpCharCount">0 characters</div>
@@ -232,7 +257,13 @@
                     </div>
                     <div class="result-footer">
                         <button class="copy-button" id="copyExtractorInterp">
-                            <span class="copy-icon">📋</span>
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
                             <span>Copy Text</span>
                         </button>
                         <div class="char-count" id="extractorInterpCharCount">0 characters</div>

@@ -38,11 +38,6 @@ const extractorInterpTime = document.getElementById('extractorInterpTime');
 const extractorInterpCharCount = document.getElementById('extractorInterpCharCount');
 const copyExtractorInterp = document.getElementById('copyExtractorInterp');
 
-// Image preview elements
-const imagePreviewSection = document.getElementById('imagePreviewSection');
-const imagePreviewGrid = document.getElementById('imagePreviewGrid');
-const imageCount = document.getElementById('imageCount');
-
 // Prompt Editor Elements
 const editPromptButton = document.getElementById('editPromptButton');
 const headerEditPromptButton = document.getElementById('headerEditPromptButton');
@@ -52,6 +47,13 @@ const promptTextarea = document.getElementById('promptTextarea');
 const savePrompt = document.getElementById('savePrompt');
 const cancelPrompt = document.getElementById('cancelPrompt');
 const resetPrompt = document.getElementById('resetPrompt');
+
+
+removeButton.addEventListener("click", () => {
+    fileInput.value = "";
+    fileInfo.style.display = "none"; // 👈 hide again
+});
+
 
 let selectedFile = null;
 
@@ -144,16 +146,21 @@ function handleFile(file) {
     fileName.textContent = file.name;
     fileSize.textContent = formatFileSize(file.size);
 
-    dropzone.style.display = 'none';
+    // ✅ Keep dropzone visible
+    dropzone.style.display = 'block';
+
+    // ✅ Show file info
     fileInfo.style.display = 'block';
 }
 
 function clearFile() {
     selectedFile = null;
     fileInput.value = '';
-    dropzone.style.display = 'block';
+
     fileInfo.style.display = 'none';
+    dropzone.style.display = 'block'; // always visible
 }
+
 
 function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -302,13 +309,6 @@ async function processTextractFlow(formData) {
 }
 
 function displayGeminiResult(data) {
-    // Display images first (even if there's an error, show converted images)
-    if (data.images && data.images.length > 0) {
-        displayGridImages(data.images);
-    } else {
-        imagePreviewSection.style.display = 'none';
-    }
-
     if (!data.success || data.error) {
         const errorMsg = formatErrorMessage(data.error, 'Gemini');
         geminiText.innerHTML = `<div class="error-box"><p class="error-title">❌ Error</p><p class="error-message">${errorMsg}</p></div>`;
@@ -320,51 +320,6 @@ function displayGeminiResult(data) {
         geminiTime.querySelector('.time-value').textContent = formatTime(data.time);
         geminiTime.querySelector('.time-value').style.color = '#48bb78';
         geminiCharCount.textContent = `${data.text.length.toLocaleString()} characters`;
-    }
-}
-
-function displayGridImages(images) {
-    imagePreviewSection.style.display = 'block';
-    imageCount.textContent = `${images.length} image${images.length > 1 ? 's' : ''}`;
-    imagePreviewGrid.innerHTML = '';
-
-    images.forEach((base64, index) => {
-        const container = document.createElement('div');
-        container.className = 'preview-image-container';
-
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${base64}`;
-        img.className = 'preview-image';
-        img.alt = `Grid ${index + 1}`;
-        img.title = `Click to open Grid ${index + 1} in new tab`;
-        img.onclick = () => openImageInNewTab(base64, `Grid ${index + 1}`);
-
-        const label = document.createElement('div');
-        label.className = 'preview-image-label';
-        label.textContent = `Grid ${index + 1}`;
-
-        container.appendChild(img);
-        container.appendChild(label);
-        imagePreviewGrid.appendChild(container);
-    });
-}
-
-// Open image in new tab using blob URL (works better than base64)
-function openImageInNewTab(base64, title) {
-    // Convert base64 to blob
-    const byteString = atob(base64);
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-    for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i);
-    }
-    const blob = new Blob([ab], { type: 'image/png' });
-    const blobUrl = URL.createObjectURL(blob);
-
-    // Open in new tab
-    const newTab = window.open(blobUrl, '_blank');
-    if (newTab) {
-        newTab.document.title = title;
     }
 }
 
@@ -463,10 +418,6 @@ function resetToUpload() {
     extractorCharCount.textContent = '0 characters';
     geminiInterpCharCount.textContent = '0 characters';
     extractorInterpCharCount.textContent = '0 characters';
-
-    // Reset image preview
-    imagePreviewSection.style.display = 'none';
-    imagePreviewGrid.innerHTML = '';
 }
 
 async function copyToClipboard(text, button) {
