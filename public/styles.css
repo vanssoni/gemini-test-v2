@@ -166,6 +166,9 @@ body {
 .upload-pdf{
     width: 15px;
 }
+.file-pdf{
+    width: 33px;
+}
 .edit-pdf{
     width: 20px;
     /* color: white; */
