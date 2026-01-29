@@ -166,6 +166,10 @@ body {
 .upload-pdf{
     width: 15px;
 }
+.edit-pdf{
+    width: 20px;
+    /* color: white; */
+}
 /* .upload-dropzone:hover,
 .upload-dropzone.drag-over {
     border-color: var(--accent-gemini);
