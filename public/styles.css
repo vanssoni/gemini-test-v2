@@ -29,6 +29,25 @@
 
 /* rgb(87 136 245 / 20%) */
 
+/* Global Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: gray;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: gray;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -63,7 +82,7 @@ body {
     z-index: 1;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 15px;
 }
 
 /* Header */
@@ -136,7 +155,7 @@ body {
 
 /* Upload Section */
 .upload-section {
-    margin-bottom: 3rem;
+    /* margin-bottom: 3rem; */
     animation: fadeInUp 0.6s ease-out 0.2s both;
 }
 
@@ -563,23 +582,7 @@ body {
     word-wrap: break-word;
 }
 
-.result-text::-webkit-scrollbar {
-    width: 8px;
-}
 
-.result-text::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-}
-
-.result-text::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-}
-
-.result-text::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
 
 .placeholder-text {
     color: var(--text-muted);
