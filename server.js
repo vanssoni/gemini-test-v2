@@ -12,7 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+// CORS is handled by Nginx - do not enable here to avoid duplicate headers
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
