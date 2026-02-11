@@ -13,14 +13,15 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 20 * 1024 * 1024 // 20MB limit
+        fileSize: 100 * 1024 * 1024 // 100MB limit
     },
     fileFilter: (req, file, cb) => {
         if (file.mimetype === 'application/pdf') {
@@ -211,7 +212,7 @@ app.get('/', (req, res) => {
 app.use((error, req, res, next) => {
     if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({ error: 'File size too large. Maximum 20MB allowed.' });
+            return res.status(400).json({ error: 'File size too large. Maximum 100MB allowed.' });
         }
     }
     res.status(500).json({ error: error.message });
