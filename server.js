@@ -7,6 +7,7 @@ const geminiHelper = require('./gemini-helper');
 const textractHelper = require('./textract-helper');
 const extractorHelper = require('./extractor-helper');
 const interpreterHelper = require('./interpreter-helper');
+const comparisonHelper = require('./comparison-helper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -193,6 +194,47 @@ app.post('/api/interpret', async (req, res) => {
         res.status(500).json({
             success: false,
             service: 'interpreter',
+            error: error.message
+        });
+    }
+});
+
+
+// Comparison API endpoint
+app.post('/api/compare', async (req, res) => {
+    try {
+        const { output1, output2 } = req.body;
+
+        if (!output1 || !output2) {
+            return res.status(400).json({ error: 'Both output1 and output2 are required in the request body' });
+        }
+
+        const startTime = Date.now();
+        
+        try {
+            const result = await comparisonHelper.compareMedicalOutputs(output1, output2);
+            res.json({
+                success: true,
+                service: 'comparison',
+                data: result,
+                time: Date.now() - startTime,
+                error: null
+            });
+        } catch (error) {
+            console.error('Comparison processing error:', error);
+            res.json({
+                success: false,
+                service: 'comparison',
+                data: null,
+                time: Date.now() - startTime,
+                error: error.message
+            });
+        }
+    } catch (error) {
+        console.error('Server error during comparison:', error);
+        res.status(500).json({
+            success: false,
+            service: 'comparison',
             error: error.message
         });
     }
