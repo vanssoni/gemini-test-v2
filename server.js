@@ -1,33 +1,193 @@
 require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
-const cors = require('cors');
 const path = require('path');
 const geminiHelper = require('./gemini-helper');
 const textractHelper = require('./textract-helper');
 const extractorHelper = require('./extractor-helper');
 const interpreterHelper = require('./interpreter-helper');
+const comparisonHelper = require('./comparison-helper');
+const generateService = require('./generate-service');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+// CORS is handled by Nginx - do not enable here to avoid duplicate headers
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 20 * 1024 * 1024 // 20MB limit
+        fileSize: 100 * 1024 * 1024 // 100MB limit
     },
     fileFilter: (req, file, cb) => {
-        if (file.mimetype === 'application/pdf') {
+        if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
             cb(null, true);
         } else {
-            cb(new Error('Only PDF files are allowed'));
+            cb(new Error('Only PDF and image files are allowed'));
         }
+    }
+});
+const uploadDocument = upload.fields([
+    { name: 'pdf', maxCount: 1 },
+    { name: 'file', maxCount: 1 },
+    { name: 'image', maxCount: 1 }
+]);
+
+function getUploadedFile(req) {
+    const file = req.file ||
+        req.files?.pdf?.[0] ||
+        req.files?.file?.[0] ||
+        req.files?.image?.[0];
+
+    if (!file) {
+        throw new Error('No PDF or image file uploaded');
+    }
+
+    return file;
+}
+
+app.post('/api/aws', uploadDocument, async (req, res) => {
+    const startTime = Date.now();
+    let extractedText = '';
+    let extractorResponse = null;
+    let interpretationResponse = null;
+    let output = null;
+
+    try {
+        const file = getUploadedFile(req);
+        extractedText = await textractHelper.extractText(file.buffer, file.originalname, file.mimetype);
+        extractorResponse = await generateService.processExtractorAi(extractedText);
+        interpretationResponse = await generateService.processInterpretationAi(extractorResponse);
+        output = generateService.cleanResponse(interpretationResponse);
+
+        res.json({
+            success: true,
+            service: 'aws',
+            pdfText: extractedText,
+            input: extractedText,
+            extractorOutput: extractorResponse,
+            interpretationOutput: output,
+            output,
+            time: Date.now() - startTime,
+            error: null
+        });
+    } catch (error) {
+        console.error('aws error:', error);
+        res.json({
+            success: false,
+            service: 'aws',
+            pdfText: extractedText,
+            input: extractedText,
+            extractorOutput: extractorResponse,
+            interpretationRawOutput: interpretationResponse,
+            interpretationOutput: output,
+            output,
+            time: Date.now() - startTime,
+            error: error.message
+        });
+    }
+});
+
+app.post('/api/gemini_openai', uploadDocument, async (req, res) => {
+    const startTime = Date.now();
+    let extractionResponse = null;
+    let interpretationResponse = null;
+    let output = null;
+
+    try {
+        const file = getUploadedFile(req);
+        extractionResponse = await generateService.processGeminiExtractionAi(file.buffer);
+        interpretationResponse = await generateService.processInterpretationAi(extractionResponse);
+        output = generateService.cleanResponse(interpretationResponse);
+
+        res.json({
+            success: true,
+            service: 'gemini_openai',
+            extractorOutput: extractionResponse,
+            geminiOutput: output,
+            output,
+            time: Date.now() - startTime,
+            error: null
+        });
+    } catch (error) {
+        console.error('gemini_openai error:', error);
+        res.json({
+            success: false,
+            service: 'gemini_openai',
+            extractorOutput: extractionResponse,
+            geminiRawOutput: interpretationResponse,
+            geminiOutput: output,
+            output,
+            time: Date.now() - startTime,
+            error: error.message
+        });
+    }
+});
+
+app.post('/api/gemini', uploadDocument, async (req, res) => {
+    const startTime = Date.now();
+    let response = null;
+    let output = null;
+
+    try {
+        const file = getUploadedFile(req);
+        response = await generateService.processOneShotGeminiAi(file.buffer);
+        output = generateService.cleanResponse(response);
+
+        res.json({
+            success: true,
+            service: 'gemini',
+            rawOutput: response,
+            output,
+            time: Date.now() - startTime,
+            error: null
+        });
+    } catch (error) {
+        console.error('gemini error:', error);
+        res.json({
+            success: false,
+            service: 'gemini',
+            rawOutput: response,
+            output,
+            time: Date.now() - startTime,
+            error: error.message
+        });
+    }
+});
+
+app.post('/api/openai', uploadDocument, async (req, res) => {
+    const startTime = Date.now();
+    let response = null;
+    let output = null;
+
+    try {
+        const file = getUploadedFile(req);
+        response = await generateService.processOneShotOpenAi(file.buffer);
+        output = generateService.cleanResponse(response);
+
+        res.json({
+            success: true,
+            service: 'openai',
+            rawOutput: response,
+            output,
+            time: Date.now() - startTime,
+            error: null
+        });
+    } catch (error) {
+        console.error('openai error:', error);
+        res.json({
+            success: false,
+            service: 'openai',
+            rawOutput: response,
+            output,
+            time: Date.now() - startTime,
+            error: error.message
+        });
     }
 });
 
@@ -43,15 +203,17 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
         const startTime = Date.now();
 
         try {
-            const text = await geminiHelper.extractTextFromPDF(fileBuffer, req.file.mimetype, customPrompt);
+            const result = await geminiHelper.extractTextFromPDF(fileBuffer, customPrompt);
             const time = Date.now() - startTime;
 
+            // Result now includes error field - images are always returned if available
             res.json({
-                success: true,
+                success: !result.error,
                 service: 'gemini',
-                text: text,
+                text: result.text || '',
+                images: result.images || [], // Always return images
                 time: time,
-                error: null
+                error: result.error
             });
         } catch (error) {
             console.error('Gemini error:', error);
@@ -59,6 +221,7 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
                 success: false,
                 service: 'gemini',
                 text: '',
+                images: [], // No images if conversion itself failed
                 time: Date.now() - startTime,
                 error: error.message
             });
@@ -84,7 +247,7 @@ app.post('/api/extract/textract', upload.single('pdf'), async (req, res) => {
         const startTime = Date.now();
 
         try {
-            const text = await textractHelper.extractTextFromPDF(fileBuffer, req.file.originalname);
+            const text = await textractHelper.extractText(fileBuffer, req.file.originalname, req.file.mimetype);
             const time = Date.now() - startTime;
 
             res.json({
@@ -194,6 +357,47 @@ app.post('/api/interpret', async (req, res) => {
     }
 });
 
+
+// Comparison API endpoint
+app.post('/api/compare', async (req, res) => {
+    try {
+        const { output1, output2 } = req.body;
+
+        if (!output1 || !output2) {
+            return res.status(400).json({ error: 'Both output1 and output2 are required in the request body' });
+        }
+
+        const startTime = Date.now();
+        
+        try {
+            const result = await comparisonHelper.compareMedicalOutputs(output1, output2);
+            res.json({
+                success: true,
+                service: 'comparison',
+                data: result,
+                time: Date.now() - startTime,
+                error: null
+            });
+        } catch (error) {
+            console.error('Comparison processing error:', error);
+            res.json({
+                success: false,
+                service: 'comparison',
+                data: null,
+                time: Date.now() - startTime,
+                error: error.message
+            });
+        }
+    } catch (error) {
+        console.error('Server error during comparison:', error);
+        res.status(500).json({
+            success: false,
+            service: 'comparison',
+            error: error.message
+        });
+    }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -208,8 +412,11 @@ app.get('/', (req, res) => {
 app.use((error, req, res, next) => {
     if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({ error: 'File size too large. Maximum 20MB allowed.' });
+            return res.status(400).json({ error: 'File size too large. Maximum 100MB allowed.' });
         }
+    }
+    if (error.message === 'Only PDF and image files are allowed') {
+        return res.status(400).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
 });

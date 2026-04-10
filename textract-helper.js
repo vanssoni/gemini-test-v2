@@ -18,6 +18,33 @@ class TextractHelper {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    async extractText(fileBuffer, originalFilename = 'document.pdf', mimetype = 'application/pdf') {
+        if (mimetype && mimetype.startsWith('image/')) {
+            return this.extractTextFromImage(fileBuffer);
+        }
+
+        return this.extractTextFromPDF(fileBuffer, originalFilename);
+    }
+
+    async extractTextFromImage(fileBuffer) {
+        try {
+            console.log('Starting Textract image extraction...');
+            const result = await textract.detectDocumentText({
+                Document: {
+                    Bytes: fileBuffer
+                }
+            }).promise();
+
+            return (result.Blocks || [])
+                .filter(block => block.BlockType === 'LINE' && block.Text)
+                .map(block => block.Text)
+                .join('\n');
+        } catch (err) {
+            console.error('Textract image extraction error:', err);
+            throw new Error(`Textract image extraction failed: ${err.message}`);
+        }
+    }
+
     /**
      * Extract text from PDF buffer using AWS Textract
      * Uploads to S3 first, then processes with Textract
