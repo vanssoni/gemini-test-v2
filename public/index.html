@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Text Extraction Comparison | Gemini vs AWS Textract</title>
-    <meta name="description" content="Compare PDF text extraction between Google Gemini 2.0 Flash and AWS Textract">
+    <title>Medical Report AI Pathway Comparison</title>
+    <meta name="description" content="Compare AWS, Gemini + OpenAI, Gemini, and OpenAI medical report pathways">
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,14 +19,9 @@
             <div class="header-content">
                 <h1 class="title">
                     <img src="./download.svg" alt="Upload" class="file-pdf" />
-                    PDF Text Extraction Comparison
+                    Medical Report AI Pathway Comparison
                 </h1>
-                <p class="subtitle">Compare Google Gemini 3 Pro vs AWS Textract</p>
-                <button class="header-edit-prompt-button" id="headerEditPromptButton" title="Edit Gemini Prompt">
-                    <!-- <span class="button-icon">✏️</span> -->
-                    <img src="./square-pen.svg" alt="Upload" class="edit-pdf" style="color: white;" />
-                    <span class="button-text">Edit Gemini Prompt</span>
-                </button>
+                <p class="subtitle">Run AWS, Gemini + OpenAI, Gemini, and OpenAI side by side</p>
             </div>
         </header>
 
@@ -40,11 +35,11 @@
                         <p class="upload-description">
                             Drag & Drop or Click to Upload
                         </p>
-                        <input type="file" id="fileInput" accept=".pdf" hidden>
+                        <input type="file" id="fileInput" accept=".pdf,image/*" hidden>
                         <button class="upload-button" id="uploadButton" style="display: none;">
                             Choose File
                         </button>
-                        <p class="upload-hint">PDF file only - Max file size 20MB</p>
+                        <p class="upload-hint">PDF or image file - Max file size 20MB</p>
                     </div>
                 </div>
 
@@ -69,36 +64,106 @@
         <section class="loading-section" id="loadingSection" style="display: none;">
             <div class="loading-card">
                 <div class="spinner"></div>
-                <h3 class="loading-title">Preparing PDF...</h3>
-                <p class="loading-text">Starting extraction with both services</p>
+                <h3 class="loading-title">Preparing file...</h3>
+                <p class="loading-text">Starting all report pathways</p>
             </div>
         </section>
 
         <!-- Results Section -->
         <section class="results-section" id="resultsSection" style="display: none;">
             <div class="results-header">
-                <h2 class="results-title">Extraction Results</h2>
+                <h2 class="results-title">Pathway Results</h2>
                 <button class="new-upload-button" id="newUploadButton">
-                    <span>Upload Another PDF</span>
+                    <span>Upload Another File</span>
                 </button>
             </div>
 
             <div class="comparison-grid">
-                <!-- Gemini Results -->
-                <div class="result-card gemini-card">
+                <div class="result-card textract-card">
                     <div class="result-header">
                         <div class="result-title-group">
-                            <div class="result-icon gemini-icon">🤖</div>
+                            <div class="result-icon textract-icon">AWS</div>
                             <div>
-                                <h3 class="result-title">Gemini 3 pro</h3>
-                                <p class="result-subtitle">Fast & Efficient</p>
+                                <h3 class="result-title">AWS</h3>
+                                <p class="result-subtitle">Textract, Extractor AI, Interpretation AI</p>
                             </div>
                         </div>
                         <div class="result-header-actions">
-                            <button class="edit-prompt-button" id="editPromptButton" title="Edit Prompt"
-                                style="display: none;">
-                                <span>✏️</span>
-                            </button>
+                            <div class="accuracy-pill" id="awsAccuracy">Accuracy: -</div>
+                            <div class="result-time" id="awsTime">
+                                <span class="time-label">Time:</span>
+                                <span class="time-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-content">
+                        <div class="result-text" id="awsText">
+                            <p class="placeholder-text">AWS pathway output will appear here...</p>
+                        </div>
+                    </div>
+                    <div class="result-footer">
+                        <button class="copy-button" id="copyAws">
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
+                            <span>Copy Output</span>
+                        </button>
+                        <div class="char-count" id="awsCharCount">0 characters</div>
+                    </div>
+                </div>
+
+                <div class="result-card gemini-openai-card">
+                    <div class="result-header">
+                        <div class="result-title-group">
+                            <div class="result-icon gemini-openai-icon">GO</div>
+                            <div>
+                                <h3 class="result-title">Gemini + OpenAI</h3>
+                                <p class="result-subtitle">Gemini extraction, OpenAI interpretation</p>
+                            </div>
+                        </div>
+                        <div class="result-header-actions">
+                            <div class="accuracy-pill" id="geminiOpenAiAccuracy">Accuracy: -</div>
+                            <div class="result-time" id="geminiOpenAiTime">
+                                <span class="time-label">Time:</span>
+                                <span class="time-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-content">
+                        <div class="result-text" id="geminiOpenAiText">
+                            <p class="placeholder-text">Gemini + OpenAI output will appear here...</p>
+                        </div>
+                    </div>
+                    <div class="result-footer">
+                        <button class="copy-button" id="copyGeminiOpenAi">
+                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4
+                 a2 2 0 0 1 2-2h9
+                 a2 2 0 0 1 2 2v1" />
+                            </svg>
+                            <span>Copy Output</span>
+                        </button>
+                        <div class="char-count" id="geminiOpenAiCharCount">0 characters</div>
+                    </div>
+                </div>
+
+                <div class="result-card gemini-card">
+                    <div class="result-header">
+                        <div class="result-title-group">
+                            <div class="result-icon gemini-icon">G</div>
+                            <div>
+                                <h3 class="result-title">Gemini</h3>
+                                <p class="result-subtitle">One shot Gemini output</p>
+                            </div>
+                        </div>
+                        <div class="result-header-actions">
+                            <div class="accuracy-pill" id="geminiAccuracy">Accuracy: -</div>
                             <div class="result-time" id="geminiTime">
                                 <span class="time-label">Time:</span>
                                 <span class="time-value">-</span>
@@ -107,7 +172,7 @@
                     </div>
                     <div class="result-content">
                         <div class="result-text" id="geminiText">
-                            <p class="placeholder-text">Extracted text will appear here...</p>
+                            <p class="placeholder-text">Gemini output will appear here...</p>
                         </div>
                     </div>
                     <div class="result-footer">
@@ -119,34 +184,36 @@
                  a2 2 0 0 1 2-2h9
                  a2 2 0 0 1 2 2v1" />
                             </svg>
-                            <span>Copy Text</span>
+                            <span>Copy Output</span>
                         </button>
                         <div class="char-count" id="geminiCharCount">0 characters</div>
                     </div>
                 </div>
 
-                <!-- Textract Results -->
-                <div class="result-card textract-card">
+                <div class="result-card openai-card">
                     <div class="result-header">
                         <div class="result-title-group">
-                            <div class="result-icon textract-icon">☁️</div>
+                            <div class="result-icon openai-icon">O</div>
                             <div>
-                                <h3 class="result-title">AWS Textract</h3>
-                                <p class="result-subtitle">Current System</p>
+                                <h3 class="result-title">OpenAI</h3>
+                                <p class="result-subtitle">One shot OpenAI output</p>
                             </div>
                         </div>
-                        <div class="result-time" id="textractTime">
-                            <span class="time-label">Time:</span>
-                            <span class="time-value">-</span>
+                        <div class="result-header-actions">
+                            <div class="accuracy-pill" id="openaiAccuracy">Accuracy: -</div>
+                            <div class="result-time" id="openaiTime">
+                                <span class="time-label">Time:</span>
+                                <span class="time-value">-</span>
+                            </div>
                         </div>
                     </div>
                     <div class="result-content">
-                        <div class="result-text" id="textractText">
-                            <p class="placeholder-text">Extracted text will appear here...</p>
+                        <div class="result-text" id="openaiText">
+                            <p class="placeholder-text">OpenAI output will appear here...</p>
                         </div>
                     </div>
                     <div class="result-footer">
-                        <button class="copy-button" id="copyTextract">
+                        <button class="copy-button" id="copyOpenai">
                             <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="9" y="9" width="13" height="13"></rect>
@@ -154,145 +221,13 @@
                  a2 2 0 0 1 2-2h9
                  a2 2 0 0 1 2 2v1" />
                             </svg>
-                            <span>Copy Text</span>
+                            <span>Copy Output</span>
                         </button>
-                        <div class="char-count" id="textractCharCount">0 characters</div>
-                    </div>
-                </div>
-
-                <!-- Extractor AI Results -->
-                <div class="result-card extractor-card">
-                    <div class="result-header">
-                        <div class="result-title-group">
-                            <div class="result-icon extractor-icon">🧠</div>
-                            <div>
-                                <h3 class="result-title">Extractor AI</h3>
-                                <p class="result-subtitle">Structured Output</p>
-                            </div>
-                        </div>
-                        <div class="result-time" id="extractorTime">
-                            <span class="time-label">Time:</span>
-                            <span class="time-value">-</span>
-                        </div>
-                    </div>
-                    <div class="result-content">
-                        <div class="result-text" id="extractorText">
-                            <p class="placeholder-text">Extracted text will appear here...</p>
-                        </div>
-                    </div>
-                    <div class="result-footer">
-                        <button class="copy-button" id="copyExtractor">
-                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="9" y="9" width="13" height="13"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4
-                 a2 2 0 0 1 2-2h9
-                 a2 2 0 0 1 2 2v1" />
-                            </svg>
-                            <span>Copy Text</span>
-                        </button>
-                        <div class="char-count" id="extractorCharCount">0 characters</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Interpretation Results Row -->
-            <h3 class="interpretation-section-title">Interpretation Results</h3>
-            <div class="comparison-grid interpretation-grid">
-                <!-- Gemini Interpretation Results -->
-                <div class="result-card gemini-interp-card">
-                    <div class="result-header">
-                        <div class="result-title-group">
-                            <div class="result-icon gemini-interp-icon">🔍</div>
-                            <div>
-                                <h3 class="result-title">Gemini Interpretation</h3>
-                                <p class="result-subtitle">Interpreted Report</p>
-                            </div>
-                        </div>
-                        <div class="result-time" id="geminiInterpTime">
-                            <span class="time-label">Time:</span>
-                            <span class="time-value">-</span>
-                        </div>
-                    </div>
-                    <div class="result-content">
-                        <div class="result-text" id="geminiInterpText">
-                            <p class="placeholder-text">Interpreted result will appear here...</p>
-                        </div>
-                    </div>
-                    <div class="result-footer">
-                        <button class="copy-button" id="copyGeminiInterp">
-                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="9" y="9" width="13" height="13"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4
-                 a2 2 0 0 1 2-2h9
-                 a2 2 0 0 1 2 2v1" />
-                            </svg>
-                            <span>Copy Text</span>
-                        </button>
-                        <div class="char-count" id="geminiInterpCharCount">0 characters</div>
-                    </div>
-                </div>
-
-                <!-- Extractor Interpretation Results -->
-                <div class="result-card extractor-interp-card">
-                    <div class="result-header">
-                        <div class="result-title-group">
-                            <div class="result-icon extractor-interp-icon">📊</div>
-                            <div>
-                                <h3 class="result-title">Extractor Interpretation</h3>
-                                <p class="result-subtitle">Interpreted Report</p>
-                            </div>
-                        </div>
-                        <div class="result-time" id="extractorInterpTime">
-                            <span class="time-label">Time:</span>
-                            <span class="time-value">-</span>
-                        </div>
-                    </div>
-                    <div class="result-content">
-                        <div class="result-text" id="extractorInterpText">
-                            <p class="placeholder-text">Interpreted result will appear here...</p>
-                        </div>
-                    </div>
-                    <div class="result-footer">
-                        <button class="copy-button" id="copyExtractorInterp">
-                            <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="9" y="9" width="13" height="13"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4
-                 a2 2 0 0 1 2-2h9
-                 a2 2 0 0 1 2 2v1" />
-                            </svg>
-                            <span>Copy Text</span>
-                        </button>
-                        <div class="char-count" id="extractorInterpCharCount">0 characters</div>
+                        <div class="char-count" id="openaiCharCount">0 characters</div>
                     </div>
                 </div>
             </div>
         </section>
-
-        <!-- Prompt Editor Modal -->
-        <div class="modal-overlay" id="promptModal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Edit Gemini Prompt</h3>
-                    <button class="modal-close" id="closeModal">✕</button>
-                </div>
-                <div class="modal-body">
-                    <textarea id="promptTextarea" class="prompt-textarea" rows="8"
-                        placeholder="Enter your custom prompt..."></textarea>
-                    <p class="modal-hint">This prompt will be saved in your browser and used for all future extractions.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button class="modal-button secondary" id="resetPrompt">Reset to Default</button>
-                    <div class="modal-actions">
-                        <button class="modal-button secondary" id="cancelPrompt">Cancel</button>
-                        <button class="modal-button primary" id="savePrompt">Save Prompt</button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script src="app.js"></script>
