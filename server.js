@@ -21,19 +21,6 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
 
-// Allow all origins for API requests.
-app.use('/api', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
-    }
-
-    next();
-});
-
 // Configure multer for file uploads (store in memory)
 const upload = multer({
     storage: multer.memoryStorage(),
