@@ -10,81 +10,75 @@ const uploadSection = document.getElementById('uploadSection');
 const loadingSection = document.getElementById('loadingSection');
 const resultsSection = document.getElementById('resultsSection');
 const newUploadButton = document.getElementById('newUploadButton');
+const loadingTitle = document.querySelector('.loading-title');
+const loadingText = document.querySelector('.loading-text');
+
+const ACTIVE_JOB_KEY = 'reportComparisonActiveJobId';
+const POLL_INTERVAL_MS = 3000;
+const API_BASE_URL = (
+    window.location.protocol === 'file:' || window.location.port === '5500'
+        ? 'http://127.0.0.1:3004'
+        : ''
+).replace(/\/$/, '');
 
 const pathways = {
     aws: {
-        endpoint: '/api/aws',
         label: 'AWS',
         text: document.getElementById('awsText'),
         time: document.getElementById('awsTime'),
         accuracy: document.getElementById('awsAccuracy'),
         count: document.getElementById('awsCharCount'),
         copy: document.getElementById('copyAws'),
-        compareValue(data) {
-            return data.interpretationOutput ?? data.output ?? data.interpretationRawOutput;
-        },
         sections(data) {
             return [
-                ['Final Interpretation Output', data.interpretationOutput ?? data.output ?? data.interpretationRawOutput ?? data.extractorOutput]
+                ['Final Interpretation Output', data?.interpretationOutput ?? data?.output ?? data?.interpretationRawOutput ?? data?.extractorOutput]
             ];
         }
     },
     geminiOpenAi: {
-        endpoint: '/api/gemini_openai',
         label: 'Gemini + OpenAI',
         text: document.getElementById('geminiOpenAiText'),
         time: document.getElementById('geminiOpenAiTime'),
         accuracy: document.getElementById('geminiOpenAiAccuracy'),
         count: document.getElementById('geminiOpenAiCharCount'),
         copy: document.getElementById('copyGeminiOpenAi'),
-        compareValue(data) {
-            return data.extractorOutput ?? data.geminiOutput ?? data.output;
-        },
         sections(data) {
             return [
-                ['Final Gemini Output', data.geminiOutput ?? data.output ?? data.geminiRawOutput ?? data.extractorOutput]
+                ['Final Gemini Output', data?.geminiOutput ?? data?.output ?? data?.geminiRawOutput ?? data?.extractorOutput]
             ];
         }
     },
     gemini: {
-        endpoint: '/api/gemini',
         label: 'Gemini',
         text: document.getElementById('geminiText'),
         time: document.getElementById('geminiTime'),
         accuracy: document.getElementById('geminiAccuracy'),
         count: document.getElementById('geminiCharCount'),
         copy: document.getElementById('copyGemini'),
-        compareValue(data) {
-            return data.output ?? data.rawOutput;
-        },
         sections(data) {
             return [
-                ['Final Gemini Output (One Shot)', data.output ?? data.rawOutput]
+                ['Final Gemini Output (One Shot)', data?.output ?? data?.rawOutput]
             ];
         }
     },
     openai: {
-        endpoint: '/api/openai',
         label: 'OpenAI',
         text: document.getElementById('openaiText'),
         time: document.getElementById('openaiTime'),
         accuracy: document.getElementById('openaiAccuracy'),
         count: document.getElementById('openaiCharCount'),
         copy: document.getElementById('copyOpenai'),
-        compareValue(data) {
-            return data.output ?? data.rawOutput;
-        },
         sections(data) {
             return [
-                ['Final OpenAI Output (One Shot)', data.output ?? data.rawOutput]
+                ['Final OpenAI Output (One Shot)', data?.output ?? data?.rawOutput]
             ];
         }
     }
 };
 
 let selectedFile = null;
-let pdfText = '';
-let latestOutputs = {};
+let activeJobId = localStorage.getItem(ACTIVE_JOB_KEY) || '';
+let pollingTimer = null;
 
 uploadButton.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -124,6 +118,12 @@ Object.values(pathways).forEach((pathway) => {
     pathway.copy.addEventListener('click', () => copyToClipboard(pathway.text.textContent, pathway.copy));
 });
 
+restoreActiveJob();
+
+function apiUrl(path) {
+    return `${API_BASE_URL}${path}`;
+}
+
 function handleFileSelect(event) {
     const file = event.target.files[0];
     if (file) {
@@ -148,15 +148,14 @@ function handleFile(file) {
     selectedFile = file;
     fileName.textContent = file.name;
     fileSize.textContent = formatFileSize(file.size);
-    dropzone.style.display = 'block';
     fileInfo.style.display = 'block';
+    dropzone.style.display = 'block';
 }
 
 function clearFile() {
     selectedFile = null;
     fileInput.value = '';
     fileInfo.style.display = 'none';
-    dropzone.style.display = 'block';
 }
 
 function formatFileSize(bytes) {
@@ -165,83 +164,165 @@ function formatFileSize(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function makeFormData() {
+function makeFormData(previousJobId) {
     const formData = new FormData();
     formData.append('pdf', selectedFile);
+
+    if (previousJobId) {
+        formData.append('previousJobId', previousJobId);
+    }
+
     return formData;
 }
 
 async function processFile() {
-    if (!selectedFile) return;
+    if (!selectedFile) {
+        return;
+    }
 
-    pdfText = '';
-    latestOutputs = {};
-    uploadSection.style.display = 'none';
-    loadingSection.style.display = 'block';
-    resultsSection.style.display = 'none';
-
+    stopPolling();
+    showLoadingState('Preparing file...', 'Starting all report pathways');
     resetCardsForRun();
 
-    setTimeout(() => {
-        loadingSection.style.display = 'none';
-        resultsSection.style.display = 'block';
-    }, 100);
-
-    Object.entries(pathways).forEach(([key, pathway]) => {
-        runPathway(key, pathway);
-    });
-}
-
-function resetCardsForRun() {
-    Object.values(pathways).forEach((pathway) => {
-        pathway.text.innerHTML = '';
-        const placeholder = document.createElement('p');
-        placeholder.className = 'placeholder-text';
-        placeholder.textContent = `Processing ${pathway.label}...`;
-        pathway.text.appendChild(placeholder);
-        setTime(pathway, '...', true);
-        setAccuracy(pathway, 'Accuracy: waiting for PDF text', 'pending');
-        pathway.count.textContent = '0 characters';
-    });
-}
-
-async function runPathway(key, pathway) {
-    const startedAt = Date.now();
+    const previousJobId = activeJobId;
 
     try {
-        const response = await fetch(pathway.endpoint, {
+        const response = await fetch(apiUrl('/api/reports'), {
             method: 'POST',
-            body: makeFormData(),
+            body: makeFormData(previousJobId),
             keepalive: false
         });
-        const data = await response.json();
+        const payload = await response.json();
 
-        if (key === 'aws' && data.pdfText) {
-            pdfText = data.pdfText;
+        if (!response.ok || !payload.success || !payload.job?.jobId) {
+            throw new Error(payload.error || 'Failed to create report job');
         }
 
-        latestOutputs[key] = data;
-        renderPathway(pathway, data, Date.now() - startedAt);
+        activeJobId = payload.job.jobId;
+        localStorage.setItem(ACTIVE_JOB_KEY, activeJobId);
 
-        if (data.success === false && !pathway.compareValue(data)) {
-            setAccuracy(pathway, 'Accuracy: unavailable', 'error');
-            return;
-        }
-
-        if (pdfText) {
-            await comparePathway(key, pathway, data);
-            await compareCompletedPathways();
-        } else {
-            setAccuracy(pathway, 'Accuracy: waiting for PDF text', 'pending');
-        }
+        showResultsState();
+        renderJob(payload.job);
+        startPolling();
     } catch (error) {
-        console.error(`${pathway.label} error:`, error);
-        renderError(pathway, error.message, Date.now() - startedAt);
+        console.error('report job create error:', error);
+        showResultsState();
+        renderGlobalError(error.message);
+        clearStoredJob();
     }
 }
 
-function renderPathway(pathway, data, fallbackTime) {
+async function restoreActiveJob() {
+    if (!activeJobId) {
+        resetCardsToEmpty();
+        return;
+    }
+
+    resetCardsForRun();
+    showLoadingState('Restoring last report...', 'Checking saved report progress');
+
+    const found = await fetchAndRenderActiveJob();
+    if (!found) {
+        resetToUpload({ deleteServerJob: false });
+    }
+}
+
+async function fetchAndRenderActiveJob() {
+    if (!activeJobId) {
+        return false;
+    }
+
+    try {
+        const response = await fetch(apiUrl(`/api/reports/${encodeURIComponent(activeJobId)}`), {
+            method: 'GET',
+            cache: 'no-store'
+        });
+        const payload = await response.json();
+
+        if (response.status === 404 || !payload.success || !payload.job) {
+            return false;
+        }
+
+        showResultsState();
+        renderJob(payload.job);
+
+        if (isJobFinished(payload.job)) {
+            stopPolling();
+        } else {
+            startPolling();
+        }
+
+        return true;
+    } catch (error) {
+        console.error('report job fetch error:', error);
+        showResultsState();
+        renderGlobalError('Unable to load the saved report right now');
+        return true;
+    }
+}
+
+function startPolling() {
+    if (!activeJobId || pollingTimer) {
+        return;
+    }
+
+    pollingTimer = window.setInterval(async () => {
+        const found = await fetchAndRenderActiveJob();
+        if (!found) {
+            resetToUpload({ deleteServerJob: false });
+        }
+    }, POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+    if (!pollingTimer) {
+        return;
+    }
+
+    window.clearInterval(pollingTimer);
+    pollingTimer = null;
+}
+
+function renderJob(job) {
+    Object.entries(pathways).forEach(([key, pathway]) => {
+        const state = job.pathways?.[key];
+        renderPathwayState(pathway, state);
+    });
+}
+
+function renderPathwayState(pathway, state) {
+    if (!state || state.status === 'pending' || state.status === 'running') {
+        renderPending(pathway, state?.status || 'pending');
+        return;
+    }
+
+    if (state.status === 'error') {
+        renderError(pathway, state.error || 'Processing failed', state.time);
+        return;
+    }
+
+    renderSuccess(pathway, state);
+}
+
+function renderPending(pathway, status) {
     pathway.text.innerHTML = '';
+
+    const placeholder = document.createElement('p');
+    placeholder.className = 'placeholder-text';
+    placeholder.textContent = status === 'running'
+        ? `Processing ${pathway.label}...`
+        : `${pathway.label} is queued...`;
+
+    pathway.text.appendChild(placeholder);
+    pathway.count.textContent = '0 characters';
+    setTime(pathway, status === 'running' ? '...' : '-', true);
+    setAccuracy(pathway, 'Accuracy: waiting for PDF text', 'pending');
+}
+
+function renderSuccess(pathway, state) {
+    pathway.text.innerHTML = '';
+
+    const data = state.data || {};
 
     if (data.error && data.success === false) {
         appendError(pathway.text, data.error);
@@ -261,7 +342,22 @@ function renderPathway(pathway, data, fallbackTime) {
 
     const visibleText = pathway.text.textContent || '';
     pathway.count.textContent = `${visibleText.length.toLocaleString()} characters`;
-    setTime(pathway, formatTime(data.time ?? fallbackTime), data.success !== false);
+    setTime(pathway, formatTime(state.time), true);
+    applyAccuracyState(pathway, state);
+}
+
+function applyAccuracyState(pathway, state) {
+    if (state.accuracyStatus === 'success' && state.accuracy !== null) {
+        setAccuracy(pathway, `Accuracy: ${state.accuracy}%`, 'success');
+        return;
+    }
+
+    if (state.accuracyStatus === 'error') {
+        setAccuracy(pathway, 'Accuracy: unavailable', 'error');
+        return;
+    }
+
+    setAccuracy(pathway, 'Accuracy: waiting for PDF text', 'pending');
 }
 
 function renderError(pathway, message, time) {
@@ -270,6 +366,10 @@ function renderError(pathway, message, time) {
     pathway.count.textContent = '0 characters';
     setTime(pathway, formatTime(time), false);
     setAccuracy(pathway, 'Accuracy: unavailable', 'error');
+}
+
+function renderGlobalError(message) {
+    Object.values(pathways).forEach((pathway) => renderError(pathway, message, 0));
 }
 
 function appendSection(container, title, value) {
@@ -306,49 +406,6 @@ function appendError(container, message) {
     container.appendChild(box);
 }
 
-async function compareCompletedPathways() {
-    await Promise.all(
-        Object.entries(latestOutputs)
-            .filter(([key, data]) => !data.__compared && pathways[key].compareValue(data))
-            .map(([key, data]) => comparePathway(key, pathways[key], data))
-    );
-}
-
-async function comparePathway(key, pathway, data) {
-    const output2 = pathway.compareValue(data);
-
-    if (!pdfText || !output2 || data.__compared) {
-        return;
-    }
-
-    data.__compared = true;
-    setAccuracy(pathway, 'Accuracy: checking...', 'pending');
-
-    try {
-        const response = await fetch('/api/compare', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                output1: pdfText,
-                output2
-            }),
-            keepalive: false
-        });
-        const compareData = await response.json();
-
-        if (!compareData.success || compareData.error) {
-            throw new Error(compareData.error || 'Compare failed');
-        }
-
-        const accuracy = compareData.data?.accuracy;
-        setAccuracy(pathway, `Accuracy: ${accuracy ?? '-'}%`, 'success');
-    } catch (error) {
-        console.error(`${pathway.label} compare error:`, error);
-        data.__compared = false;
-        setAccuracy(pathway, 'Accuracy: error', 'error');
-    }
-}
-
 function setTime(pathway, value, success) {
     const timeValue = pathway.time.querySelector('.time-value');
     timeValue.textContent = value;
@@ -373,19 +430,46 @@ function stringifyOutput(value) {
 }
 
 function formatTime(ms) {
-    if (!Number.isFinite(Number(ms))) return '-';
+    if (!Number.isFinite(Number(ms)) || Number(ms) <= 0) return '-';
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function resetToUpload() {
+async function resetToUpload(options = {}) {
+    const { deleteServerJob = true } = options;
+    const jobIdToDelete = activeJobId;
+
+    stopPolling();
     clearFile();
-    pdfText = '';
-    latestOutputs = {};
+    clearStoredJob();
+
     uploadSection.style.display = 'block';
     loadingSection.style.display = 'none';
     resultsSection.style.display = 'none';
 
+    resetCardsToEmpty();
+
+    if (deleteServerJob && jobIdToDelete) {
+        try {
+            await fetch(apiUrl(`/api/reports/${encodeURIComponent(jobIdToDelete)}`), {
+                method: 'DELETE'
+            });
+        } catch (error) {
+            console.error('report job delete error:', error);
+        }
+    }
+}
+
+function clearStoredJob() {
+    activeJobId = '';
+    localStorage.removeItem(ACTIVE_JOB_KEY);
+}
+
+function resetCardsForRun() {
+    Object.values(pathways).forEach((pathway) => renderPending(pathway, 'running'));
+}
+
+function resetCardsToEmpty() {
     Object.values(pathways).forEach((pathway) => {
         pathway.text.innerHTML = '';
         const placeholder = document.createElement('p');
@@ -396,6 +480,26 @@ function resetToUpload() {
         setAccuracy(pathway, 'Accuracy: -', 'pending');
         pathway.count.textContent = '0 characters';
     });
+}
+
+function showLoadingState(title, message) {
+    uploadSection.style.display = 'none';
+    loadingSection.style.display = 'block';
+    resultsSection.style.display = 'none';
+    loadingTitle.textContent = title;
+    loadingText.textContent = message;
+}
+
+function showResultsState() {
+    uploadSection.style.display = 'none';
+    loadingSection.style.display = 'none';
+    resultsSection.style.display = 'block';
+}
+
+function isJobFinished(job) {
+    return Object.values(job.pathways || {}).every((pathway) => (
+        pathway.status === 'success' || pathway.status === 'error'
+    ));
 }
 
 async function copyToClipboard(text, button) {

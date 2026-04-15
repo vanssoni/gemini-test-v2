@@ -8,15 +8,31 @@ const extractorHelper = require('./extractor-helper');
 const interpreterHelper = require('./interpreter-helper');
 const comparisonHelper = require('./comparison-helper');
 const generateService = require('./generate-service');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const REPORT_JOB_TTL_MS = 60 * 60 * 1000;
+const reportJobs = new Map();
 
 // Middleware
 // CORS is handled by Nginx - do not enable here to avoid duplicate headers
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
+
+// Local dev CORS support for file:// and separate frontend origins.
+app.use('/api', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+
+    next();
+});
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({
@@ -50,6 +66,345 @@ function getUploadedFile(req) {
 
     return file;
 }
+
+function cleanupExpiredJobs() {
+    const cutoff = Date.now() - REPORT_JOB_TTL_MS;
+
+    for (const [jobId, job] of reportJobs.entries()) {
+        if ((job.updatedAt || job.createdAt) < cutoff) {
+            reportJobs.delete(jobId);
+        }
+    }
+}
+
+function deleteJob(jobId) {
+    if (!jobId) {
+        return false;
+    }
+
+    return reportJobs.delete(jobId);
+}
+
+function createInitialPathwayState(label) {
+    return {
+        label,
+        status: 'pending',
+        startedAt: null,
+        completedAt: null,
+        time: null,
+        accuracy: null,
+        accuracyStatus: 'pending',
+        data: null,
+        error: null
+    };
+}
+
+function serializeJob(job) {
+    return {
+        jobId: job.jobId,
+        status: job.status,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+        fileName: job.fileName,
+        fileType: job.fileType,
+        pathways: job.pathways
+    };
+}
+
+function getCompareValue(service, data) {
+    if (!data) {
+        return null;
+    }
+
+    if (service === 'aws') {
+        return data.interpretationOutput ?? data.output ?? data.interpretationRawOutput ?? null;
+    }
+
+    if (service === 'geminiOpenAi') {
+        return data.extractorOutput ?? data.geminiOutput ?? data.output ?? null;
+    }
+
+    return data.output ?? data.rawOutput ?? null;
+}
+
+async function updateAccuracyForCompletedPathways(job) {
+    const pdfText = job.pathways.aws.data?.pdfText;
+
+    if (!pdfText) {
+        for (const pathway of Object.values(job.pathways)) {
+            if (pathway.status === 'success' && pathway.accuracy === null) {
+                pathway.accuracyStatus = 'pending';
+            }
+        }
+        return;
+    }
+
+    await Promise.all(Object.entries(job.pathways).map(async ([service, pathway]) => {
+        if (pathway.status !== 'success' || pathway.accuracy !== null) {
+            return;
+        }
+
+        const output2 = getCompareValue(service, pathway.data);
+        if (!output2) {
+            pathway.accuracyStatus = 'error';
+            return;
+        }
+
+        try {
+            const result = await comparisonHelper.compareMedicalOutputs(pdfText, output2);
+            pathway.accuracy = result?.accuracy ?? null;
+            pathway.accuracyStatus = pathway.accuracy === null ? 'error' : 'success';
+        } catch (error) {
+            console.error(`${service} compare error:`, error);
+            pathway.accuracyStatus = 'error';
+        } finally {
+            job.updatedAt = Date.now();
+        }
+    }));
+}
+
+async function runPathwayJob(job, service, processor) {
+    const pathway = job.pathways[service];
+    pathway.status = 'running';
+    pathway.startedAt = Date.now();
+    pathway.error = null;
+    job.updatedAt = Date.now();
+
+    try {
+        const data = await processor();
+        pathway.status = data.success === false ? 'error' : 'success';
+        pathway.completedAt = Date.now();
+        pathway.time = data.time ?? (pathway.completedAt - pathway.startedAt);
+        pathway.data = data;
+        pathway.error = data.error || null;
+    } catch (error) {
+        console.error(`${service} job error:`, error);
+        pathway.status = 'error';
+        pathway.completedAt = Date.now();
+        pathway.time = pathway.completedAt - pathway.startedAt;
+        pathway.data = null;
+        pathway.error = error.message;
+    } finally {
+        job.updatedAt = Date.now();
+        await updateAccuracyForCompletedPathways(job);
+    }
+}
+
+async function processReportJob(job, file) {
+    job.status = 'running';
+    job.updatedAt = Date.now();
+
+    await Promise.all([
+        runPathwayJob(job, 'aws', async () => {
+            const startTime = Date.now();
+            let extractedText = '';
+            let extractorResponse = null;
+            let interpretationResponse = null;
+            let output = null;
+
+            try {
+                extractedText = await textractHelper.extractText(file.buffer, file.originalname, file.mimetype);
+                extractorResponse = await generateService.processExtractorAi(extractedText);
+                interpretationResponse = await generateService.processInterpretationAi(extractorResponse);
+                output = generateService.cleanResponse(interpretationResponse);
+
+                return {
+                    success: true,
+                    service: 'aws',
+                    pdfText: extractedText,
+                    input: extractedText,
+                    extractorOutput: extractorResponse,
+                    interpretationOutput: output,
+                    output,
+                    time: Date.now() - startTime,
+                    error: null
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    service: 'aws',
+                    pdfText: extractedText,
+                    input: extractedText,
+                    extractorOutput: extractorResponse,
+                    interpretationRawOutput: interpretationResponse,
+                    interpretationOutput: output,
+                    output,
+                    time: Date.now() - startTime,
+                    error: error.message
+                };
+            }
+        }),
+        runPathwayJob(job, 'geminiOpenAi', async () => {
+            const startTime = Date.now();
+            let extractionResponse = null;
+            let interpretationResponse = null;
+            let output = null;
+
+            try {
+                extractionResponse = await generateService.processGeminiExtractionAi(file.buffer);
+                interpretationResponse = await generateService.processInterpretationAi(extractionResponse);
+                output = generateService.cleanResponse(interpretationResponse);
+
+                return {
+                    success: true,
+                    service: 'gemini_openai',
+                    extractorOutput: extractionResponse,
+                    geminiOutput: output,
+                    output,
+                    time: Date.now() - startTime,
+                    error: null
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    service: 'gemini_openai',
+                    extractorOutput: extractionResponse,
+                    geminiRawOutput: interpretationResponse,
+                    geminiOutput: output,
+                    output,
+                    time: Date.now() - startTime,
+                    error: error.message
+                };
+            }
+        }),
+        runPathwayJob(job, 'gemini', async () => {
+            const startTime = Date.now();
+            let response = null;
+            let output = null;
+
+            try {
+                response = await generateService.processOneShotGeminiAi(file.buffer);
+                output = generateService.cleanResponse(response);
+
+                return {
+                    success: true,
+                    service: 'gemini',
+                    rawOutput: response,
+                    output,
+                    time: Date.now() - startTime,
+                    error: null
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    service: 'gemini',
+                    rawOutput: response,
+                    output,
+                    time: Date.now() - startTime,
+                    error: error.message
+                };
+            }
+        }),
+        runPathwayJob(job, 'openai', async () => {
+            const startTime = Date.now();
+            let response = null;
+            let output = null;
+
+            try {
+                response = await generateService.processOneShotOpenAi(file.buffer);
+                output = generateService.cleanResponse(response);
+
+                return {
+                    success: true,
+                    service: 'openai',
+                    rawOutput: response,
+                    output,
+                    time: Date.now() - startTime,
+                    error: null
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    service: 'openai',
+                    rawOutput: response,
+                    output,
+                    time: Date.now() - startTime,
+                    error: error.message
+                };
+            }
+        })
+    ]);
+
+    const statuses = Object.values(job.pathways).map((pathway) => pathway.status);
+    job.status = statuses.every((status) => status === 'error') ? 'error' : 'completed';
+    job.updatedAt = Date.now();
+}
+
+function createReportJob(file) {
+    cleanupExpiredJobs();
+
+    const job = {
+        jobId: uuidv4(),
+        status: 'queued',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        pathways: {
+            aws: createInitialPathwayState('AWS'),
+            geminiOpenAi: createInitialPathwayState('Gemini + OpenAI'),
+            gemini: createInitialPathwayState('Gemini'),
+            openai: createInitialPathwayState('OpenAI')
+        }
+    };
+
+    reportJobs.set(job.jobId, job);
+    processReportJob(job, file).catch((error) => {
+        console.error('Background report job error:', error);
+        job.status = 'error';
+        job.updatedAt = Date.now();
+    });
+
+    return job;
+}
+
+app.post('/api/reports', uploadDocument, async (req, res) => {
+    try {
+        const file = getUploadedFile(req);
+        const previousJobId = req.body?.previousJobId;
+
+        cleanupExpiredJobs();
+        deleteJob(previousJobId);
+
+        const job = createReportJob(file);
+
+        res.status(202).json({
+            success: true,
+            job: serializeJob(job)
+        });
+    } catch (error) {
+        console.error('report job create error:', error);
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+app.get('/api/reports/:jobId', (req, res) => {
+    cleanupExpiredJobs();
+
+    const job = reportJobs.get(req.params.jobId);
+    if (!job) {
+        return res.status(404).json({
+            success: false,
+            error: 'Report job not found or expired'
+        });
+    }
+
+    res.json({
+        success: true,
+        job: serializeJob(job)
+    });
+});
+
+app.delete('/api/reports/:jobId', (req, res) => {
+    cleanupExpiredJobs();
+
+    res.json({
+        success: deleteJob(req.params.jobId)
+    });
+});
 
 app.post('/api/aws', uploadDocument, async (req, res) => {
     const startTime = Date.now();
@@ -199,20 +554,19 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
         }
 
         const fileBuffer = req.file.buffer;
-        const customPrompt = req.body.prompt; // Get custom prompt from request body
+        const customPrompt = req.body.prompt;
         const startTime = Date.now();
 
         try {
             const result = await geminiHelper.extractTextFromPDF(fileBuffer, customPrompt);
             const time = Date.now() - startTime;
 
-            // Result now includes error field - images are always returned if available
             res.json({
                 success: !result.error,
                 service: 'gemini',
                 text: result.text || '',
-                images: result.images || [], // Always return images
-                time: time,
+                images: result.images || [],
+                time,
                 error: result.error
             });
         } catch (error) {
@@ -221,7 +575,7 @@ app.post('/api/extract/gemini', upload.single('pdf'), async (req, res) => {
                 success: false,
                 service: 'gemini',
                 text: '',
-                images: [], // No images if conversion itself failed
+                images: [],
                 time: Date.now() - startTime,
                 error: error.message
             });
@@ -253,8 +607,8 @@ app.post('/api/extract/textract', upload.single('pdf'), async (req, res) => {
             res.json({
                 success: true,
                 service: 'textract',
-                text: text,
-                time: time,
+                text,
+                time,
                 error: null
             });
         } catch (error) {
@@ -356,7 +710,6 @@ app.post('/api/interpret', async (req, res) => {
         });
     }
 });
-
 
 // Comparison API endpoint
 app.post('/api/compare', async (req, res) => {
