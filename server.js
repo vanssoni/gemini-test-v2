@@ -21,11 +21,41 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
 
-// Local dev CORS support for file:// and separate frontend origins.
+// Local dev CORS support for file:// and approved frontend origins.
 app.use('/api', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    const origin = req.headers.origin;
+    const allowedOrigins = new Set([
+        'http://localhost:5174',
+        'http://localhost:3000',
+        'http://127.0.0.1:5174',
+        'http://127.0.0.1:3000',
+        'https://emr-implement.d1srrfqulskucv.amplifyapp.com'
+    ]);
+
+    let allowOrigin = false;
+
+    if (!origin) {
+        allowOrigin = true;
+    } else if (allowedOrigins.has(origin)) {
+        allowOrigin = true;
+    } else {
+        try {
+            const { hostname, protocol } = new URL(origin);
+            const isHttpLocal = protocol === 'http:' && hostname === 'localhost';
+            const isMedistryDomain = protocol === 'https:' && (hostname === 'medistry.ai' || hostname.endsWith('.medistry.ai'));
+
+            allowOrigin = isHttpLocal || isMedistryDomain || origin === 'https://emr-implement.d1srrfqulskucv.amplifyapp.com';
+        } catch (error) {
+            allowOrigin = false;
+        }
+    }
+
+    if (allowOrigin && origin) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Vary', 'Origin');
+        res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type');
+    }
 
     if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
