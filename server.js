@@ -9,6 +9,50 @@ const interpreterHelper = require('./interpreter-helper');
 const comparisonHelper = require('./comparison-helper');
 const generateService = require('./generate-service');
 const { v4: uuidv4 } = require('uuid');
+const AWS = require('aws-sdk');
+
+const s3 = new AWS.S3({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+});
+
+async function uploadReportToS3(file, jobId) {
+    const bucket = process.env.AWS_REPORT_BUCKET;
+    if (!bucket) {
+        throw new Error('AWS_REPORT_BUCKET is not configured');
+    }
+
+    const reportName = `${jobId}-${file.originalname}`;
+    const key = `reports/${reportName}`;
+
+    await s3.putObject({
+        Bucket: bucket,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype
+    }).promise();
+
+    const region = process.env.AWS_REGION;
+    const reportLink = `https://${bucket}.s3.${region}.amazonaws.com/${encodeURI(key)}`;
+
+    return { reportName, reportLink, reportKey: key };
+}
+
+async function deleteReportFromS3(key) {
+    if (!key || !process.env.AWS_REPORT_BUCKET) {
+        return;
+    }
+
+    try {
+        await s3.deleteObject({
+            Bucket: process.env.AWS_REPORT_BUCKET,
+            Key: key
+        }).promise();
+    } catch (error) {
+        console.warn('Failed to delete report from S3:', error.message);
+    }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,7 +113,13 @@ function deleteJob(jobId) {
         return false;
     }
 
-    return reportJobs.delete(jobId);
+    const job = reportJobs.get(jobId);
+    const deleted = reportJobs.delete(jobId);
+    if (job) {
+        deleteReportFromS3(job.reportKey);
+    }
+
+    return deleted;
 }
 
 function createInitialPathwayState(label) {
@@ -94,6 +144,8 @@ function serializeJob(job) {
         updatedAt: job.updatedAt,
         fileName: job.fileName,
         fileType: job.fileType,
+        reportName: job.reportName || null,
+        reportLink: job.reportLink || null,
         pathways: job.pathways
     };
 }
@@ -317,16 +369,19 @@ async function processReportJob(job, file) {
     job.updatedAt = Date.now();
 }
 
-function createReportJob(file) {
+function createReportJob(file, reportUpload, jobId = uuidv4()) {
     cleanupExpiredJobs();
 
     const job = {
-        jobId: uuidv4(),
+        jobId,
         status: 'queued',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         fileName: file.originalname,
         fileType: file.mimetype,
+        reportName: reportUpload?.reportName || null,
+        reportLink: reportUpload?.reportLink || null,
+        reportKey: reportUpload?.reportKey || null,
         pathways: {
             aws: createInitialPathwayState('AWS'),
             geminiOpenAi: createInitialPathwayState('Gemini + OpenAI'),
@@ -353,7 +408,9 @@ app.post('/api/reports', uploadDocument, async (req, res) => {
         cleanupExpiredJobs();
         deleteJob(previousJobId);
 
-        const job = createReportJob(file);
+        const jobId = uuidv4();
+        const reportUpload = await uploadReportToS3(file, jobId);
+        const job = createReportJob(file, reportUpload, jobId);
 
         res.status(202).json({
             success: true,
