@@ -56,7 +56,7 @@ async function deleteReportFromS3(key) {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const REPORT_JOB_TTL_MS = 60 * 60 * 1000;
+const REPORT_JOB_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const reportJobs = new Map();
 
 // Middleware
@@ -104,6 +104,7 @@ function cleanupExpiredJobs() {
     for (const [jobId, job] of reportJobs.entries()) {
         if ((job.updatedAt || job.createdAt) < cutoff) {
             reportJobs.delete(jobId);
+            deleteReportFromS3(job.reportKey);
         }
     }
 }
