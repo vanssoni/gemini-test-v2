@@ -223,13 +223,13 @@ class GenerateService {
         if (Array.isArray(value.testAndConditions)) {
             value.testAndConditions = value.testAndConditions
                 .map((condition) => this.sortMedicalResponse(condition))
-                .sort((a, b) => (a?.name || '').localeCompare(b?.name || ''));
+                .sort((a, b) => this.sortAlphabetically(a?.name, b?.name));
         }
 
         if (Array.isArray(value.metrics)) {
             value.metrics = value.metrics
                 .map((metric) => this.sortMedicalResponse(metric))
-                .sort((a, b) => (a?.metric || '').localeCompare(b?.metric || ''));
+                .sort((a, b) => this.sortAlphabetically(a?.metric, b?.metric));
         }
 
         for (const key of Object.keys(value)) {
@@ -239,6 +239,10 @@ class GenerateService {
         }
 
         return value;
+    }
+
+    sortAlphabetically(left, right) {
+        return (left || '').localeCompare((right || ''), undefined, { sensitivity: 'base' });
     }
 }
 
