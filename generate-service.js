@@ -220,10 +220,12 @@ class GenerateService {
             return value;
         }
 
-        if (Array.isArray(value.testAndConditions)) {
-            value.testAndConditions = value.testAndConditions
-                .map((condition) => this.sortMedicalResponse(condition))
-                .sort((a, b) => this.sortAlphabetically(a?.name, b?.name));
+        for (const collectionKey of ['testAndConditions', 'testsAndConditions']) {
+            if (Array.isArray(value[collectionKey])) {
+                value[collectionKey] = value[collectionKey]
+                    .map((condition) => this.sortMedicalResponse(condition))
+                    .sort((a, b) => this.sortAlphabetically(a?.name, b?.name));
+            }
         }
 
         if (Array.isArray(value.metrics)) {
@@ -233,7 +235,7 @@ class GenerateService {
         }
 
         for (const key of Object.keys(value)) {
-            if (key !== 'testAndConditions' && key !== 'metrics') {
+            if (key !== 'testAndConditions' && key !== 'testsAndConditions' && key !== 'metrics') {
                 value[key] = this.sortMedicalResponse(value[key]);
             }
         }
