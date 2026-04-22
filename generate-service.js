@@ -205,10 +205,40 @@ class GenerateService {
         const jsonString = match?.[1] ? match[1].trim() : trimmedResponse;
 
         try {
-            return JSON.parse(jsonString);
+            return this.sortMedicalResponse(JSON.parse(jsonString));
         } catch (error) {
             throw new Error(`Unable to parse json: ${jsonString}`);
         }
+    }
+
+    sortMedicalResponse(value) {
+        if (Array.isArray(value)) {
+            return value.map((item) => this.sortMedicalResponse(item));
+        }
+
+        if (!value || typeof value !== 'object') {
+            return value;
+        }
+
+        if (Array.isArray(value.testAndConditions)) {
+            value.testAndConditions = value.testAndConditions
+                .map((condition) => this.sortMedicalResponse(condition))
+                .sort((a, b) => (a?.name || '').localeCompare(b?.name || ''));
+        }
+
+        if (Array.isArray(value.metrics)) {
+            value.metrics = value.metrics
+                .map((metric) => this.sortMedicalResponse(metric))
+                .sort((a, b) => (a?.metric || '').localeCompare(b?.metric || ''));
+        }
+
+        for (const key of Object.keys(value)) {
+            if (key !== 'testAndConditions' && key !== 'metrics') {
+                value[key] = this.sortMedicalResponse(value[key]);
+            }
+        }
+
+        return value;
     }
 }
 
