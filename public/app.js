@@ -502,6 +502,339 @@ function isJobFinished(job) {
     ));
 }
 
+// ---------- Tabs ----------
+const tabButtons = document.querySelectorAll('.tab-button');
+const tabPanels = {
+    single: document.getElementById('tabPanelSingle'),
+    gold: document.getElementById('tabPanelGold')
+};
+
+tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+        tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+        const target = btn.dataset.tab;
+        Object.entries(tabPanels).forEach(([key, panel]) => {
+            if (panel) panel.style.display = key === target ? '' : 'none';
+        });
+        if (target === 'gold' && !goldListLoaded) {
+            loadGoldStandards();
+        }
+    });
+});
+
+// ---------- Gold Standard ----------
+const GOLD_JOB_KEY = 'goldStandardActiveJobId';
+const goldListEl = document.getElementById('goldList');
+const goldSelectAll = document.getElementById('goldSelectAll');
+const goldSelectedCount = document.getElementById('goldSelectedCount');
+const goldRefreshButton = document.getElementById('goldRefreshButton');
+const goldRunButton = document.getElementById('goldRunButton');
+const goldClearButton = document.getElementById('goldClearButton');
+const goldResults = document.getElementById('goldResults');
+const goldResultsList = document.getElementById('goldResultsList');
+
+let goldListLoaded = false;
+let goldItems = [];
+let goldActiveJobId = localStorage.getItem(GOLD_JOB_KEY) || '';
+let goldPollingTimer = null;
+
+goldRefreshButton.addEventListener('click', loadGoldStandards);
+goldRunButton.addEventListener('click', runSelectedGoldStandards);
+goldClearButton.addEventListener('click', clearGoldRun);
+goldSelectAll.addEventListener('change', () => {
+    goldListEl.querySelectorAll('input[type="checkbox"][data-gold-id]').forEach((cb) => {
+        cb.checked = goldSelectAll.checked;
+    });
+    updateGoldSelectedCount();
+});
+
+if (goldActiveJobId) {
+    restoreGoldJob();
+}
+
+async function loadGoldStandards() {
+    goldListLoaded = true;
+    goldListEl.innerHTML = '<p class="placeholder-text">Loading gold standard reports...</p>';
+
+    try {
+        const response = await fetch(apiUrl('/api/gold-standards'), { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.error || 'Failed to load gold standards');
+        }
+        goldItems = payload.items || [];
+        renderGoldList();
+    } catch (error) {
+        console.error('gold list error:', error);
+        goldListEl.innerHTML = '';
+        const box = document.createElement('div');
+        box.className = 'error-box';
+        box.textContent = `Unable to load gold standards: ${error.message}`;
+        goldListEl.appendChild(box);
+    }
+}
+
+function renderGoldList() {
+    goldListEl.innerHTML = '';
+    if (goldItems.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'placeholder-text';
+        empty.textContent = 'No gold standard reports found in the database.';
+        goldListEl.appendChild(empty);
+        updateGoldSelectedCount();
+        return;
+    }
+
+    goldItems.forEach((item) => {
+        const row = document.createElement('label');
+        row.className = 'gold-list-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.goldId = item._id;
+        cb.addEventListener('change', updateGoldSelectedCount);
+
+        const name = document.createElement('span');
+        name.className = 'gold-file-name';
+        name.textContent = item.fileName || item._id;
+
+        row.appendChild(cb);
+        row.appendChild(name);
+
+        if (item.filePath) {
+            const link = document.createElement('a');
+            link.className = 'gold-file-link';
+            link.href = item.filePath;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = 'view file';
+            row.appendChild(link);
+        }
+
+        goldListEl.appendChild(row);
+    });
+    updateGoldSelectedCount();
+}
+
+function getSelectedGoldIds() {
+    return Array.from(goldListEl.querySelectorAll('input[type="checkbox"][data-gold-id]:checked'))
+        .map((cb) => cb.dataset.goldId);
+}
+
+function updateGoldSelectedCount() {
+    const count = getSelectedGoldIds().length;
+    goldSelectedCount.textContent = `${count} selected`;
+}
+
+function getSelectedGoldPathway() {
+    const checked = document.querySelector('input[name="goldPathway"]:checked');
+    return checked ? checked.value : 'aws';
+}
+
+async function runSelectedGoldStandards() {
+    const ids = getSelectedGoldIds();
+    if (ids.length === 0) {
+        alert('Select at least one gold standard report');
+        return;
+    }
+
+    const pathway = getSelectedGoldPathway();
+    stopGoldPolling();
+
+    goldRunButton.disabled = true;
+    goldResults.style.display = 'block';
+    goldResultsList.innerHTML = '<p class="placeholder-text">Starting run...</p>';
+
+    try {
+        const response = await fetch(apiUrl('/api/gold-standards/runs'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids, pathway })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success || !payload.job?.jobId) {
+            throw new Error(payload.error || 'Failed to start gold standard run');
+        }
+
+        goldActiveJobId = payload.job.jobId;
+        localStorage.setItem(GOLD_JOB_KEY, goldActiveJobId);
+        goldClearButton.style.display = '';
+        renderGoldJob(payload.job);
+        startGoldPolling();
+    } catch (error) {
+        console.error('gold run error:', error);
+        goldResultsList.innerHTML = '';
+        const box = document.createElement('div');
+        box.className = 'error-box';
+        box.textContent = error.message;
+        goldResultsList.appendChild(box);
+    } finally {
+        goldRunButton.disabled = false;
+    }
+}
+
+async function restoreGoldJob() {
+    goldResults.style.display = 'block';
+    goldClearButton.style.display = '';
+    const found = await fetchAndRenderGoldJob();
+    if (!found) {
+        clearGoldRun({ deleteServerJob: false });
+    }
+}
+
+async function fetchAndRenderGoldJob() {
+    if (!goldActiveJobId) return false;
+    try {
+        const response = await fetch(apiUrl(`/api/gold-standards/runs/${encodeURIComponent(goldActiveJobId)}`), {
+            cache: 'no-store'
+        });
+        const payload = await response.json();
+        if (response.status === 404 || !payload.success || !payload.job) {
+            return false;
+        }
+        renderGoldJob(payload.job);
+        if (isGoldJobFinished(payload.job)) {
+            stopGoldPolling();
+        } else {
+            startGoldPolling();
+        }
+        return true;
+    } catch (error) {
+        console.error('gold job fetch error:', error);
+        return true;
+    }
+}
+
+function startGoldPolling() {
+    if (!goldActiveJobId || goldPollingTimer) return;
+    goldPollingTimer = window.setInterval(async () => {
+        const found = await fetchAndRenderGoldJob();
+        if (!found) {
+            clearGoldRun({ deleteServerJob: false });
+        }
+    }, POLL_INTERVAL_MS);
+}
+
+function stopGoldPolling() {
+    if (!goldPollingTimer) return;
+    window.clearInterval(goldPollingTimer);
+    goldPollingTimer = null;
+}
+
+function isGoldJobFinished(job) {
+    return (job.reports || []).every((r) => (
+        (r.status === 'success' || r.status === 'error') &&
+        (r.accuracyStatus === 'success' || r.accuracyStatus === 'error')
+    ));
+}
+
+function renderGoldJob(job) {
+    goldResultsList.innerHTML = '';
+    (job.reports || []).forEach((report) => {
+        const card = document.createElement('div');
+        card.className = 'gold-result-card';
+
+        const header = document.createElement('div');
+        header.className = 'gold-result-header';
+
+        const title = document.createElement('div');
+        title.className = 'gold-result-title';
+        title.textContent = report.fileName || report.goldStandardId;
+        header.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'gold-result-meta';
+        meta.appendChild(makePill(report.status, report.status));
+        meta.appendChild(makePill(`Time: ${formatTime(report.time)}`, report.status === 'success' ? 'success' : (report.status === 'error' ? 'error' : 'pending')));
+        meta.appendChild(makePill(formatAccuracy(report), accuracyPillState(report)));
+        header.appendChild(meta);
+
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'gold-result-body';
+
+        if (report.error) {
+            const err = document.createElement('div');
+            err.className = 'error-box';
+            err.textContent = report.error;
+            body.appendChild(err);
+        }
+
+        if (report.filePath) {
+            const fileLink = document.createElement('div');
+            fileLink.innerHTML = `<a class="gold-file-link" href="${report.filePath}" target="_blank" rel="noopener">View source file</a>`;
+            body.appendChild(fileLink);
+        }
+
+        if (report.testsAndConditions !== null && report.testsAndConditions !== undefined) {
+            const det = document.createElement('details');
+            const sum = document.createElement('summary');
+            sum.textContent = 'Stored testsAndConditions (input1)';
+            det.appendChild(sum);
+            const pre = document.createElement('pre');
+            pre.textContent = stringifyOutput(report.testsAndConditions);
+            det.appendChild(pre);
+            body.appendChild(det);
+        }
+
+        if (report.output !== null && report.output !== undefined) {
+            const det = document.createElement('details');
+            det.open = true;
+            const sum = document.createElement('summary');
+            sum.textContent = 'Pathway output (input2)';
+            det.appendChild(sum);
+            const pre = document.createElement('pre');
+            pre.textContent = stringifyOutput(report.output);
+            det.appendChild(pre);
+            body.appendChild(det);
+        }
+
+        card.appendChild(body);
+        goldResultsList.appendChild(card);
+    });
+}
+
+function makePill(text, state) {
+    const pill = document.createElement('span');
+    pill.className = `gold-pill ${state || 'pending'}`;
+    pill.textContent = text;
+    return pill;
+}
+
+function formatAccuracy(report) {
+    if (report.accuracyStatus === 'success' && report.accuracy !== null && report.accuracy !== undefined) {
+        return `Accuracy: ${report.accuracy}%`;
+    }
+    if (report.accuracyStatus === 'error') return 'Accuracy: unavailable';
+    if (report.status === 'success') return 'Accuracy: comparing...';
+    return 'Accuracy: -';
+}
+
+function accuracyPillState(report) {
+    if (report.accuracyStatus === 'success') return 'success';
+    if (report.accuracyStatus === 'error') return 'error';
+    return 'pending';
+}
+
+async function clearGoldRun(options = {}) {
+    const { deleteServerJob = true } = options;
+    const jobIdToDelete = goldActiveJobId;
+    stopGoldPolling();
+    goldActiveJobId = '';
+    localStorage.removeItem(GOLD_JOB_KEY);
+    goldResultsList.innerHTML = '';
+    goldResults.style.display = 'none';
+    goldClearButton.style.display = 'none';
+    if (deleteServerJob && jobIdToDelete) {
+        try {
+            await fetch(apiUrl(`/api/gold-standards/runs/${encodeURIComponent(jobIdToDelete)}`), { method: 'DELETE' });
+        } catch (error) {
+            console.error('gold job delete error:', error);
+        }
+    }
+}
+
 async function copyToClipboard(text, button) {
     try {
         await navigator.clipboard.writeText(text);

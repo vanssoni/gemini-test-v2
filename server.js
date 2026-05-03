@@ -8,6 +8,7 @@ const extractorHelper = require('./extractor-helper');
 const interpreterHelper = require('./interpreter-helper');
 const comparisonHelper = require('./comparison-helper');
 const generateService = require('./generate-service');
+const goldStandardService = require('./gold-standard-service');
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
 
@@ -58,6 +59,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const REPORT_JOB_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const reportJobs = new Map();
+const goldStandardJobs = new Map();
 
 // Middleware
 // CORS is handled by Nginx - do not enable here to avoid duplicate headers
@@ -449,6 +451,229 @@ app.delete('/api/reports/:jobId', (req, res) => {
     res.json({
         success: deleteJob(req.params.jobId)
     });
+});
+
+// ---------- Gold Standard runs ----------
+
+const GOLD_STANDARD_PATHWAYS = ['aws', 'geminiOpenAi', 'gemini', 'openai'];
+
+function cleanupExpiredGoldJobs() {
+    const cutoff = Date.now() - REPORT_JOB_TTL_MS;
+    for (const [jobId, job] of goldStandardJobs.entries()) {
+        if ((job.updatedAt || job.createdAt) < cutoff) {
+            goldStandardJobs.delete(jobId);
+        }
+    }
+}
+
+function inferMimeTypeFromUrl(url, headerType) {
+    if (headerType && headerType !== 'application/octet-stream') {
+        return headerType;
+    }
+    const lower = (url || '').split('?')[0].toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    return headerType || 'application/octet-stream';
+}
+
+async function downloadFile(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to download file (${response.status}) from ${url}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const mimeType = inferMimeTypeFromUrl(url, response.headers.get('content-type'));
+    return { buffer, mimeType };
+}
+
+async function runPathwayForBuffer(pathway, buffer, fileName, mimeType) {
+    if (pathway === 'aws') {
+        const text = await textractHelper.extractText(buffer, fileName, mimeType);
+        const extractor = await generateService.processExtractorAi(text);
+        const interpretation = await generateService.processInterpretationAi(extractor);
+        return generateService.cleanResponse(interpretation);
+    }
+    if (pathway === 'geminiOpenAi') {
+        const extraction = await generateService.processGeminiExtractionAi(buffer);
+        const interpretation = await generateService.processInterpretationAi(extraction);
+        return generateService.cleanResponse(interpretation);
+    }
+    if (pathway === 'gemini') {
+        const response = await generateService.processOneShotGeminiAi(buffer);
+        return generateService.cleanResponse(response);
+    }
+    if (pathway === 'openai') {
+        const response = await generateService.processOneShotOpenAi(buffer);
+        return generateService.cleanResponse(response);
+    }
+    throw new Error(`Unknown pathway: ${pathway}`);
+}
+
+function createInitialGoldReport(doc) {
+    return {
+        goldStandardId: doc._id,
+        fileName: doc.fileName,
+        filePath: doc.filePath,
+        testsAndConditions: doc.testsAndConditions,
+        status: 'pending',
+        startedAt: null,
+        completedAt: null,
+        time: null,
+        output: null,
+        error: null,
+        accuracy: null,
+        accuracyStatus: 'pending',
+        accuracyError: null
+    };
+}
+
+function serializeGoldJob(job) {
+    return {
+        jobId: job.jobId,
+        status: job.status,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+        pathway: job.pathway,
+        reports: job.reports.map((r) => ({
+            goldStandardId: r.goldStandardId,
+            fileName: r.fileName,
+            filePath: r.filePath,
+            testsAndConditions: r.testsAndConditions,
+            status: r.status,
+            startedAt: r.startedAt,
+            completedAt: r.completedAt,
+            time: r.time,
+            output: r.output,
+            error: r.error,
+            accuracy: r.accuracy,
+            accuracyStatus: r.accuracyStatus,
+            accuracyError: r.accuracyError
+        }))
+    };
+}
+
+async function processGoldStandardJob(job) {
+    job.status = 'running';
+    job.updatedAt = Date.now();
+
+    for (const report of job.reports) {
+        report.status = 'running';
+        report.startedAt = Date.now();
+        job.updatedAt = Date.now();
+
+        try {
+            const { buffer, mimeType } = await downloadFile(report.filePath);
+            const output = await runPathwayForBuffer(job.pathway, buffer, report.fileName || 'report', mimeType);
+            report.output = output;
+            report.status = 'success';
+            report.completedAt = Date.now();
+            report.time = report.completedAt - report.startedAt;
+            job.updatedAt = Date.now();
+
+            try {
+                const compare = await comparisonHelper.compareMedicalOutputs(report.testsAndConditions, output);
+                report.accuracy = compare?.accuracy ?? null;
+                report.accuracyStatus = report.accuracy === null ? 'error' : 'success';
+            } catch (compareError) {
+                console.error('gold standard compare error:', compareError);
+                report.accuracyStatus = 'error';
+                report.accuracyError = compareError.message;
+            }
+        } catch (error) {
+            console.error('gold standard pathway error:', error);
+            report.status = 'error';
+            report.completedAt = Date.now();
+            report.time = report.completedAt - report.startedAt;
+            report.error = error.message;
+            report.accuracyStatus = 'error';
+        } finally {
+            job.updatedAt = Date.now();
+        }
+    }
+
+    const statuses = job.reports.map((r) => r.status);
+    job.status = statuses.every((s) => s === 'error') ? 'error' : 'completed';
+    job.updatedAt = Date.now();
+}
+
+app.get('/api/gold-standards', async (req, res) => {
+    try {
+        const items = await goldStandardService.listGoldStandards();
+        res.json({ success: true, items });
+    } catch (error) {
+        console.error('list gold standards error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/gold-standards/runs', async (req, res) => {
+    try {
+        const { ids, pathway } = req.body || {};
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'ids must be a non-empty array' });
+        }
+        if (!GOLD_STANDARD_PATHWAYS.includes(pathway)) {
+            return res.status(400).json({
+                success: false,
+                error: `pathway must be one of: ${GOLD_STANDARD_PATHWAYS.join(', ')}`
+            });
+        }
+
+        cleanupExpiredGoldJobs();
+        goldStandardJobs.clear();
+
+        const docs = await goldStandardService.getGoldStandardsByIds(ids);
+        if (docs.length === 0) {
+            return res.status(404).json({ success: false, error: 'No matching gold standard reports found' });
+        }
+
+        const missingFiles = docs.filter((d) => !d.filePath);
+        if (missingFiles.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: `Missing filePath on gold standards: ${missingFiles.map((d) => d._id).join(', ')}`
+            });
+        }
+
+        const job = {
+            jobId: uuidv4(),
+            status: 'queued',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            pathway,
+            reports: docs.map(createInitialGoldReport)
+        };
+
+        goldStandardJobs.set(job.jobId, job);
+
+        processGoldStandardJob(job).catch((error) => {
+            console.error('Background gold standard job error:', error);
+            job.status = 'error';
+            job.updatedAt = Date.now();
+        });
+
+        res.status(202).json({ success: true, job: serializeGoldJob(job) });
+    } catch (error) {
+        console.error('gold standard run create error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/gold-standards/runs/:jobId', (req, res) => {
+    cleanupExpiredGoldJobs();
+    const job = goldStandardJobs.get(req.params.jobId);
+    if (!job) {
+        return res.status(404).json({ success: false, error: 'Gold standard job not found or expired' });
+    }
+    res.json({ success: true, job: serializeGoldJob(job) });
+});
+
+app.delete('/api/gold-standards/runs/:jobId', (req, res) => {
+    cleanupExpiredGoldJobs();
+    res.json({ success: goldStandardJobs.delete(req.params.jobId) });
 });
 
 app.post('/api/aws', uploadDocument, async (req, res) => {

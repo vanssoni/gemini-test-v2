@@ -25,6 +25,14 @@
             </div>
         </header>
 
+        <!-- Tab navigation -->
+        <nav class="tab-nav" id="tabNav">
+            <button type="button" class="tab-button active" data-tab="single">Single Report</button>
+            <button type="button" class="tab-button" data-tab="gold">Gold Standard</button>
+        </nav>
+
+        <div class="tab-panel" id="tabPanelSingle">
+
         <!-- Upload Section -->
         <section class="upload-section" id="uploadSection">
             <div class="upload-card">
@@ -228,6 +236,44 @@
                 </div>
             </div>
         </section>
+
+        </div><!-- /tabPanelSingle -->
+
+        <div class="tab-panel" id="tabPanelGold" style="display: none;">
+            <section class="gold-section">
+                <div class="gold-controls">
+                    <div class="gold-pathway-row">
+                        <span class="gold-label">Pathway:</span>
+                        <label class="gold-radio"><input type="radio" name="goldPathway" value="aws" checked> AWS</label>
+                        <label class="gold-radio"><input type="radio" name="goldPathway" value="geminiOpenAi"> Gemini + OpenAI</label>
+                        <label class="gold-radio"><input type="radio" name="goldPathway" value="gemini"> Gemini</label>
+                        <label class="gold-radio"><input type="radio" name="goldPathway" value="openai"> OpenAI</label>
+                    </div>
+                    <div class="gold-actions">
+                        <button type="button" class="upload-button" id="goldRefreshButton">Refresh List</button>
+                        <button type="button" class="process-button" id="goldRunButton">Run Selected</button>
+                        <button type="button" class="upload-button" id="goldClearButton" style="display: none;">Clear Run</button>
+                    </div>
+                </div>
+
+                <div class="gold-list-card">
+                    <div class="gold-list-header">
+                        <label class="gold-radio">
+                            <input type="checkbox" id="goldSelectAll"> Select All
+                        </label>
+                        <span class="gold-count" id="goldSelectedCount">0 selected</span>
+                    </div>
+                    <div class="gold-list" id="goldList">
+                        <p class="placeholder-text">Loading gold standard reports...</p>
+                    </div>
+                </div>
+
+                <div class="gold-results" id="goldResults" style="display: none;">
+                    <h2 class="results-title">Run Results</h2>
+                    <div class="gold-results-list" id="goldResultsList"></div>
+                </div>
+            </section>
+        </div><!-- /tabPanelGold -->
     </div>
 
     <script src="app.js"></script>
