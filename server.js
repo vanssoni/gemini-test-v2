@@ -134,6 +134,7 @@ function createInitialPathwayState(label) {
         time: null,
         accuracy: null,
         accuracyStatus: 'pending',
+        comparison: null,
         data: null,
         error: null
     };
@@ -194,6 +195,7 @@ async function updateAccuracyForCompletedPathways(job) {
 
         try {
             const result = await comparisonHelper.compareMedicalOutputs(pdfText, output2);
+            pathway.comparison = result || null;
             pathway.accuracy = result?.accuracy ?? null;
             pathway.accuracyStatus = pathway.accuracy === null ? 'error' : 'success';
         } catch (error) {
@@ -526,7 +528,8 @@ function createInitialGoldReport(doc) {
         error: null,
         accuracy: null,
         accuracyStatus: 'pending',
-        accuracyError: null
+        accuracyError: null,
+        comparison: null
     };
 }
 
@@ -550,7 +553,8 @@ function serializeGoldJob(job) {
             error: r.error,
             accuracy: r.accuracy,
             accuracyStatus: r.accuracyStatus,
-            accuracyError: r.accuracyError
+            accuracyError: r.accuracyError,
+            comparison: r.comparison
         }))
     };
 }
@@ -575,6 +579,7 @@ async function processGoldStandardJob(job) {
 
             try {
                 const compare = await comparisonHelper.compareMedicalOutputs(report.testsAndConditions, output);
+                report.comparison = compare || null;
                 report.accuracy = compare?.accuracy ?? null;
                 report.accuracyStatus = report.accuracy === null ? 'error' : 'success';
             } catch (compareError) {
