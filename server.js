@@ -9,6 +9,7 @@ const interpreterHelper = require('./interpreter-helper');
 const comparisonHelper = require('./comparison-helper');
 const generateService = require('./generate-service');
 const goldStandardService = require('./gold-standard-service');
+const createReportService = require('./create-report-service');
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
 
@@ -86,6 +87,39 @@ const uploadDocument = upload.fields([
     { name: 'file', maxCount: 1 },
     { name: 'image', maxCount: 1 }
 ]);
+
+// Audio has its own multer instance: the document uploader above rejects
+// anything that is not a PDF/image.
+const AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.flac', '.webm', '.aac'];
+
+const uploadAudioMiddleware = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 100 * 1024 * 1024 // 100MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Clients are inconsistent about audio mime types (curl and some
+        // browsers send application/octet-stream), so fall back to extension.
+        const isAudioMime = file.mimetype.startsWith('audio/') || file.mimetype.startsWith('video/');
+        const isAudioExt = AUDIO_EXTENSIONS.includes(path.extname(file.originalname || '').toLowerCase());
+        if (isAudioMime || isAudioExt) {
+            cb(null, true);
+        } else {
+            cb(new Error(`Unsupported audio file: ${file.originalname} (${file.mimetype})`));
+        }
+    }
+}).single('audio');
+
+// Surface multer rejections (bad type, oversized) as 400s instead of letting
+// them fall through to the generic 500 handler.
+function uploadAudio(req, res, next) {
+    uploadAudioMiddleware(req, res, (error) => {
+        if (error) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        next();
+    });
+}
 
 function getUploadedFile(req) {
     const file = req.file ||
@@ -679,6 +713,58 @@ app.get('/api/gold-standards/runs/:jobId', (req, res) => {
 app.delete('/api/gold-standards/runs/:jobId', (req, res) => {
     cleanupExpiredGoldJobs();
     res.json({ success: goldStandardJobs.delete(req.params.jobId) });
+});
+
+// Audio in -> Whisper transcript -> Create Report AI on both models.
+// Synchronous: the response carries the transcript and both outputs.
+app.post('/api/create-report', uploadAudio, async (req, res) => {
+    const startTime = Date.now();
+
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No audio file uploaded (field name: audio)' });
+        }
+
+        const body = req.body || {};
+        let prescriptions = body.prescriptions;
+        if (typeof prescriptions === 'string' && prescriptions.trim()) {
+            try {
+                prescriptions = JSON.parse(prescriptions);
+            } catch (error) {
+                return res.status(400).json({ success: false, error: 'prescriptions must be valid JSON' });
+            }
+        }
+
+        const { transcript, transcriptionTimeMs, results } = await createReportService.createReportFromAudio(
+            req.file.buffer,
+            req.file.originalname,
+            {
+                reportType: body.reportType,
+                reportStructure: body.reportStructure,
+                clinicianSpeciality: body.clinicianSpeciality,
+                customInstructions: body.customInstructions,
+                referenceRanges: body.referenceRanges,
+                existingText: body.existingText,
+                prescriptions
+            }
+        );
+
+        res.json({
+            success: true,
+            audioFile: req.file.originalname,
+            transcript,
+            transcriptionTimeMs,
+            results,
+            totalTimeMs: Date.now() - startTime
+        });
+    } catch (error) {
+        console.error('create-report error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            totalTimeMs: Date.now() - startTime
+        });
+    }
 });
 
 app.post('/api/aws', uploadDocument, async (req, res) => {

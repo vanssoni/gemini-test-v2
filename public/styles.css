@@ -1190,3 +1190,117 @@ button,
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+/* ---------- Create Report AI (audio) tab ---------- */
+.audio-grid {
+    grid-template-columns: repeat(2, minmax(480px, 1fr));
+}
+
+.transcript-card {
+    margin-bottom: 2rem;
+}
+
+.whisper-icon {
+    background: rgba(168, 85, 247, 0.18);
+    color: #6b21a8;
+}
+
+.audio-preview {
+    width: 100%;
+    margin-top: 12px;
+}
+
+.audio-options {
+    margin-top: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: #fff;
+}
+
+.audio-options-summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #151932;
+    font-size: 14px;
+}
+
+.audio-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.audio-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.audio-field-wide {
+    grid-column: 1 / -1;
+}
+
+.audio-field-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.audio-field input,
+.audio-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #151932;
+    background: #fff;
+    resize: vertical;
+}
+
+.audio-field input:focus,
+.audio-field textarea:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+.transcript-card .result-text {
+    max-height: 260px;
+    white-space: pre-wrap;
+}
+
+.audio-grid .result-text {
+    white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+    .audio-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .audio-options-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.audio-file-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: #6b21a8;
+}
+
+.model-4-icon {
+    background: rgba(14, 165, 233, 0.18);
+    color: #075985;
+}
+
+.model-5-icon {
+    background: rgba(20, 184, 166, 0.18);
+    color: #0f766e;
+}

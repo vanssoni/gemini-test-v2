@@ -506,7 +506,8 @@ function isJobFinished(job) {
 const tabButtons = document.querySelectorAll('.tab-button');
 const tabPanels = {
     single: document.getElementById('tabPanelSingle'),
-    gold: document.getElementById('tabPanelGold')
+    gold: document.getElementById('tabPanelGold'),
+    audio: document.getElementById('tabPanelAudio')
 };
 
 tabButtons.forEach((btn) => {
@@ -851,4 +852,313 @@ async function copyToClipboard(text, button) {
         console.error('Failed to copy:', error);
         alert('Failed to copy text to clipboard');
     }
+}
+
+
+// ---------- Create Report AI (audio) ----------
+const audioDropzone = document.getElementById('audioDropzone');
+const audioFileInput = document.getElementById('audioFileInput');
+const audioUploadButton = document.getElementById('audioUploadButton');
+const audioFileInfo = document.getElementById('audioFileInfo');
+const audioFileName = document.getElementById('audioFileName');
+const audioFileSize = document.getElementById('audioFileSize');
+const audioRemoveButton = document.getElementById('audioRemoveButton');
+const audioPreview = document.getElementById('audioPreview');
+const audioProcessButton = document.getElementById('audioProcessButton');
+const audioUploadSection = document.getElementById('audioUploadSection');
+const audioLoadingSection = document.getElementById('audioLoadingSection');
+const audioLoadingTitle = document.getElementById('audioLoadingTitle');
+const audioLoadingText = document.getElementById('audioLoadingText');
+const audioResultsSection = document.getElementById('audioResultsSection');
+const audioResultsGrid = document.getElementById('audioResultsGrid');
+const audioNewUploadButton = document.getElementById('audioNewUploadButton');
+const audioTranscriptText = document.getElementById('audioTranscriptText');
+const audioTranscriptTime = document.getElementById('audioTranscriptTime');
+const audioTranscriptCharCount = document.getElementById('audioTranscriptCharCount');
+const audioCopyTranscript = document.getElementById('audioCopyTranscript');
+
+const AUDIO_EXTENSIONS = ['wav', 'mp3', 'm4a', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'flac', 'webm', 'aac'];
+const AUDIO_MAX_BYTES = 100 * 1024 * 1024;
+
+let selectedAudioFile = null;
+let audioPreviewUrl = null;
+let audioElapsedTimer = null;
+
+audioUploadButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    audioFileInput.click();
+});
+
+audioDropzone.addEventListener('click', (event) => {
+    if (event.target === audioUploadButton) return;
+    audioFileInput.click();
+});
+
+audioFileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) handleAudioFile(file);
+});
+
+['dragover', 'dragenter'].forEach((type) => {
+    audioDropzone.addEventListener(type, (event) => {
+        event.preventDefault();
+        audioDropzone.classList.add('dragover');
+    });
+});
+
+['dragleave', 'drop'].forEach((type) => {
+    audioDropzone.addEventListener(type, (event) => {
+        event.preventDefault();
+        audioDropzone.classList.remove('dragover');
+    });
+});
+
+audioDropzone.addEventListener('drop', (event) => {
+    const file = event.dataTransfer.files[0];
+    if (file) handleAudioFile(file);
+});
+
+audioRemoveButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    clearAudioFile();
+});
+
+audioProcessButton.addEventListener('click', runCreateReport);
+audioNewUploadButton.addEventListener('click', resetAudioToUpload);
+audioCopyTranscript.addEventListener('click', () => {
+    copyToClipboard(audioTranscriptText.textContent, audioCopyTranscript);
+});
+
+function isAudioFile(file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    // Browsers report inconsistent mime types for audio, so accept by extension too.
+    return file.type.startsWith('audio/') || file.type.startsWith('video/') || AUDIO_EXTENSIONS.includes(ext);
+}
+
+function handleAudioFile(file) {
+    if (!isAudioFile(file)) {
+        alert('Please select an audio file (wav, mp3, m4a, webm, ogg, flac).');
+        return;
+    }
+
+    if (file.size > AUDIO_MAX_BYTES) {
+        alert('File is too large. Maximum size is 100MB.');
+        return;
+    }
+
+    selectedAudioFile = file;
+    audioFileName.textContent = file.name;
+    audioFileSize.textContent = formatFileSize(file.size);
+    audioFileSize.style.display = '';
+    audioFileInfo.style.display = 'block';
+
+    if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+    audioPreviewUrl = URL.createObjectURL(file);
+    audioPreview.src = audioPreviewUrl;
+    audioPreview.style.display = '';
+}
+
+function clearAudioFile() {
+    selectedAudioFile = null;
+    audioFileInput.value = '';
+    audioFileInfo.style.display = 'none';
+    audioPreview.style.display = 'none';
+    audioPreview.removeAttribute('src');
+    if (audioPreviewUrl) {
+        URL.revokeObjectURL(audioPreviewUrl);
+        audioPreviewUrl = null;
+    }
+}
+
+function audioOptionValue(id) {
+    return (document.getElementById(id).value || '').trim();
+}
+
+async function runCreateReport() {
+    if (!selectedAudioFile) {
+        alert('Please select an audio file first.');
+        return;
+    }
+
+    const prescriptions = audioOptionValue('audioPrescriptions');
+    if (prescriptions) {
+        try {
+            JSON.parse(prescriptions);
+        } catch (error) {
+            alert('Prescriptions must be valid JSON.');
+            return;
+        }
+    }
+
+    const formData = new FormData();
+    formData.append('audio', selectedAudioFile);
+
+    const optionalFields = {
+        reportType: 'audioReportType',
+        clinicianSpeciality: 'audioClinicianSpeciality',
+        referenceRanges: 'audioReferenceRanges',
+        customInstructions: 'audioCustomInstructions',
+        reportStructure: 'audioReportStructure',
+        existingText: 'audioExistingText',
+        prescriptions: 'audioPrescriptions'
+    };
+
+    for (const [field, elementId] of Object.entries(optionalFields)) {
+        const value = audioOptionValue(elementId);
+        if (value) formData.append(field, value);
+    }
+
+    showAudioLoading();
+
+    try {
+        const response = await fetch(apiUrl('/api/create-report'), {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Request failed with status ${response.status}`);
+        }
+
+        renderAudioResults(data);
+    } catch (error) {
+        console.error('create-report error:', error);
+        renderAudioError(error.message);
+    } finally {
+        stopAudioElapsedTimer();
+    }
+}
+
+// The endpoint is synchronous, so there is nothing to poll — just show how long
+// the single request has been running.
+function showAudioLoading() {
+    audioUploadSection.style.display = 'none';
+    audioResultsSection.style.display = 'none';
+    audioLoadingSection.style.display = '';
+
+    const startedAt = Date.now();
+    audioLoadingTitle.textContent = 'Transcribing and generating...';
+    audioLoadingText.textContent = 'Whisper, then gpt-4.1 and gpt-5.6-sol';
+
+    stopAudioElapsedTimer();
+    audioElapsedTimer = setInterval(() => {
+        audioLoadingText.textContent =
+            `Whisper, then gpt-4.1 and gpt-5.6-sol - ${formatTime(Date.now() - startedAt)} elapsed`;
+    }, 500);
+}
+
+function stopAudioElapsedTimer() {
+    if (audioElapsedTimer) {
+        clearInterval(audioElapsedTimer);
+        audioElapsedTimer = null;
+    }
+}
+
+function renderAudioResults(data) {
+    audioLoadingSection.style.display = 'none';
+    audioResultsSection.style.display = '';
+
+    const transcript = data.transcript || '';
+    audioTranscriptText.textContent = transcript;
+    audioTranscriptCharCount.textContent = `${transcript.length} characters`;
+    audioTranscriptTime.querySelector('.time-value').textContent = formatTime(data.transcriptionTimeMs);
+
+    audioResultsGrid.innerHTML = '';
+    for (const result of (data.results || [])) {
+        audioResultsGrid.appendChild(buildAudioResultCard(result));
+    }
+}
+
+function buildAudioResultCard(result) {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+
+    const output = result.error ? '' : stringifyOutput(result.output || '');
+    const usage = result.usage
+        ? `${result.usage.prompt_tokens ?? '-'} in / ${result.usage.completion_tokens ?? '-'} out tokens`
+        : '';
+
+    const header = document.createElement('div');
+    header.className = 'result-header';
+    header.innerHTML = `
+        <div class="result-title-group">
+            <div class="result-icon"></div>
+            <div>
+                <h3 class="result-title"></h3>
+                <p class="result-subtitle">Create Report AI</p>
+            </div>
+        </div>
+        <div class="result-header-actions">
+            <div class="result-time">
+                <span class="time-label">Time:</span>
+                <span class="time-value"></span>
+            </div>
+        </div>`;
+    // Colour + label the badge by model family so the two cards read apart at a glance.
+    const majorVersion = (result.model.match(/^gpt-(\d+)/) || [])[1];
+    const icon = header.querySelector('.result-icon');
+    icon.classList.add(majorVersion === '4' ? 'model-4-icon' : 'model-5-icon');
+    icon.textContent = majorVersion ? `G${majorVersion}` : 'AI';
+    header.querySelector('.result-title').textContent = result.model;
+    header.querySelector('.time-value').textContent = formatTime(result.timeMs);
+    if (usage) {
+        header.querySelector('.result-subtitle').textContent = usage;
+    }
+    card.appendChild(header);
+
+    const content = document.createElement('div');
+    content.className = 'result-content';
+    const text = document.createElement('div');
+    text.className = 'result-text';
+
+    if (result.error) {
+        const errorBox = document.createElement('p');
+        errorBox.className = 'placeholder-text';
+        errorBox.textContent = `Error: ${result.error}`;
+        text.appendChild(errorBox);
+    } else {
+        text.textContent = output;
+    }
+
+    content.appendChild(text);
+    card.appendChild(content);
+
+    const footer = document.createElement('div');
+    footer.className = 'result-footer';
+    const copyButton = document.createElement('button');
+    copyButton.className = 'copy-button';
+    copyButton.innerHTML = '<span class="copy-icon">⧉</span><span>Copy Output</span>';
+    copyButton.addEventListener('click', () => copyToClipboard(output, copyButton));
+    const charCount = document.createElement('div');
+    charCount.className = 'char-count';
+    charCount.textContent = `${output.length} characters`;
+    footer.appendChild(copyButton);
+    footer.appendChild(charCount);
+    card.appendChild(footer);
+
+    return card;
+}
+
+function renderAudioError(message) {
+    audioLoadingSection.style.display = 'none';
+    audioResultsSection.style.display = '';
+
+    audioTranscriptText.textContent = '';
+    const errorBox = document.createElement('p');
+    errorBox.className = 'placeholder-text';
+    errorBox.textContent = `Error: ${message}`;
+    audioTranscriptText.appendChild(errorBox);
+    audioTranscriptCharCount.textContent = '0 characters';
+    audioTranscriptTime.querySelector('.time-value').textContent = '-';
+    audioResultsGrid.innerHTML = '';
+}
+
+function resetAudioToUpload() {
+    stopAudioElapsedTimer();
+    audioResultsSection.style.display = 'none';
+    audioLoadingSection.style.display = 'none';
+    audioUploadSection.style.display = '';
+    clearAudioFile();
 }
