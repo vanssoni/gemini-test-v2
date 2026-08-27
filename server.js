@@ -90,6 +90,7 @@ const uploadDocument = upload.fields([
 
 // Audio has its own multer instance: the document uploader above rejects
 // anything that is not a PDF/image.
+const AUDIO_MAX_FILES = 20;
 const AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.flac', '.webm', '.aac'];
 
 const uploadAudioMiddleware = multer({
@@ -108,14 +109,20 @@ const uploadAudioMiddleware = multer({
             cb(new Error(`Unsupported audio file: ${file.originalname} (${file.mimetype})`));
         }
     }
-}).single('audio');
+}).array('audio', AUDIO_MAX_FILES); // same field name repeated; multer keeps upload order
 
 // Surface multer rejections (bad type, oversized) as 400s instead of letting
 // them fall through to the generic 500 handler.
 function uploadAudio(req, res, next) {
     uploadAudioMiddleware(req, res, (error) => {
         if (error) {
-            return res.status(400).json({ success: false, error: error.message });
+            // multer's own codes are opaque ("Unexpected field" for too many
+            // files), so translate the ones a caller can actually act on.
+            const messages = {
+                LIMIT_UNEXPECTED_FILE: `Too many audio files (max ${AUDIO_MAX_FILES}), or the wrong field name (must be "audio")`,
+                LIMIT_FILE_SIZE: 'Audio file is larger than 100MB',
+            };
+            return res.status(400).json({ success: false, error: messages[error.code] || error.message });
         }
         next();
     });
@@ -721,7 +728,8 @@ app.post('/api/create-report', uploadAudio, async (req, res) => {
     const startTime = Date.now();
 
     try {
-        if (!req.file) {
+        const files = req.files || [];
+        if (files.length === 0) {
             return res.status(400).json({ success: false, error: 'No audio file uploaded (field name: audio)' });
         }
 
@@ -735,10 +743,23 @@ app.post('/api/create-report', uploadAudio, async (req, res) => {
             }
         }
 
-        const { transcript, transcriptionTimeMs, results } = await createReportService.createReportFromAudio(
-            req.file.buffer,
-            req.file.originalname,
+        // `models` is a JSON array of "gpt-4.1" or { model, version } entries.
+        let models = body.models;
+        if (typeof models === 'string' && models.trim()) {
+            try {
+                models = JSON.parse(models);
+            } catch (error) {
+                return res.status(400).json({ success: false, error: 'models must be valid JSON' });
+            }
+            if (!Array.isArray(models)) {
+                return res.status(400).json({ success: false, error: 'models must be a JSON array' });
+            }
+        }
+
+        const { transcript, transcripts, transcriptionTimeMs, results } = await createReportService.createReportFromAudio(
+            files,
             {
+                models,
                 reportType: body.reportType,
                 reportStructure: body.reportStructure,
                 clinicianSpeciality: body.clinicianSpeciality,
@@ -751,15 +772,17 @@ app.post('/api/create-report', uploadAudio, async (req, res) => {
 
         res.json({
             success: true,
-            audioFile: req.file.originalname,
+            audioFiles: files.map(file => file.originalname),
             transcript,
+            transcripts,
             transcriptionTimeMs,
             results,
             totalTimeMs: Date.now() - startTime
         });
     } catch (error) {
         console.error('create-report error:', error);
-        res.status(500).json({
+        const isClientError = /Unsupported prompt version|needs a model name|No audio files/.test(error.message);
+        res.status(isClientError ? 400 : 500).json({
             success: false,
             error: error.message,
             totalTimeMs: Date.now() - startTime

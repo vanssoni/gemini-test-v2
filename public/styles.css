@@ -1304,3 +1304,81 @@ button,
     background: rgba(20, 184, 166, 0.18);
     color: #0f766e;
 }
+
+/* --- Create Report: multi-file list + model/version picker --- */
+.audio-file-list,
+.audio-models {
+    margin-top: 16px;
+}
+
+.audio-file-list-header,
+.audio-models-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.audio-clear-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f766e;
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+
+.audio-clear-button:hover {
+    background: #f0fdfa;
+}
+
+.audio-file-row {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.audio-file-row .audio-preview {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.audio-file-list-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.audio-file-list-hint code {
+    font-size: 11px;
+    background: #f1f5f9;
+    padding: 1px 4px;
+    border-radius: 4px;
+}
+
+.audio-model-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.audio-model-row select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #1e293b;
+    background: #fff;
+}
+
+.audio-model-row select:focus {
+    outline: none;
+    border-color: #14b8a6;
+}

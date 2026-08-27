@@ -11,6 +11,14 @@ const USECASE_ID = 'createReportAi';
 // field that belongs to their major version (prompt vs gpt_5_prompt).
 const MODELS = ['gpt-4.1', 'gpt-5.6-sol'];
 
+// Prompt versions are decoupled from the model on purpose: the caller picks
+// which usecase field to read, so gpt-4.1 can run the gpt_5_prompt text and
+// vice versa. Omitting the version falls back to the model-derived rule.
+const VERSION_PROMPT_FIELDS = {
+    v1: 'prompt',
+    v2: 'gpt_5_prompt',
+};
+
 const DEFAULT_REPORT_STRUCTURE = `
 # **Patient Details**
 # **Presenting Complaints**
@@ -41,15 +49,39 @@ class CreateReportService {
         return [...MODELS];
     }
 
-    // Same rule as onehealth: gpt-4.x reads `prompt`, anything else reads
-    // `gpt_<major>_prompt`, falling back to `prompt` when that field is empty.
-    getPromptByModel(usecase, model) {
-        const normalized = (model || usecase?.model || '').toString().trim().toLowerCase();
+    // Normalizes "v1" / "V2" / "1" / 2 to a version key, or null when the
+    // caller did not pick one. Anything else is a caller error.
+    normalizeVersion(version) {
+        if (version === undefined || version === null || version === '') {
+            return null;
+        }
+        const key = version.toString().trim().toLowerCase().replace(/^v?/, 'v');
+        if (!VERSION_PROMPT_FIELDS[key]) {
+            throw new Error(`Unsupported prompt version "${version}" (expected ${Object.keys(VERSION_PROMPT_FIELDS).join(' or ')})`);
+        }
+        return key;
+    }
+
+    // Which usecase field to read. An explicit version wins; without one this
+    // is the onehealth rule — gpt-4.x reads `prompt`, anything else reads
+    // `gpt_<major>_prompt`.
+    getPromptField(model, version) {
+        const key = this.normalizeVersion(version);
+        if (key) {
+            return VERSION_PROMPT_FIELDS[key];
+        }
+
+        const normalized = (model || '').toString().trim().toLowerCase();
         const modelMatch = normalized.match(/^gpt-(\d+)/);
         const modelMajorVersion = modelMatch ? modelMatch[1] : null;
-        const promptField = modelMajorVersion && modelMajorVersion !== '4'
+        return modelMajorVersion && modelMajorVersion !== '4'
             ? `gpt_${modelMajorVersion}_prompt`
             : 'prompt';
+    }
+
+    // Reads the selected field, falling back to `prompt` when it is empty.
+    getPromptByModel(usecase, model, version) {
+        const promptField = this.getPromptField(model || usecase?.model, version);
 
         const modelPrompt = (usecase?.[promptField] ?? '').toString().trim();
         if (modelPrompt) {
@@ -173,11 +205,11 @@ class CreateReportService {
         throw lastError;
     }
 
-    buildMessages(usecase, model, transcript, options = {}) {
+    buildMessages(usecase, model, transcript, options = {}, version = null) {
         const reportType = options.reportType || '';
         const reportStructure = options.reportStructure || DEFAULT_REPORT_STRUCTURE;
 
-        const selectedPrompt = this.getPromptByModel(usecase, model);
+        const selectedPrompt = this.getPromptByModel(usecase, model, version);
         const replacedPrompt = this.replacePlaceholders(selectedPrompt, {
             report_type: reportType,
             clinician_speciality: options.clinicianSpeciality || '',
@@ -203,8 +235,8 @@ class CreateReportService {
         ];
     }
 
-    async runModel(usecase, model, transcript, options = {}) {
-        const messages = this.buildMessages(usecase, model, transcript, options);
+    async runModel(usecase, model, transcript, options = {}, version = null) {
+        const messages = this.buildMessages(usecase, model, transcript, options, version);
 
         const params = {
             model,
@@ -227,38 +259,92 @@ class CreateReportService {
 
         return {
             model,
+            version: this.normalizeVersion(version),
+            promptField: this.getPromptField(model, version),
             output: response?.choices?.[0]?.message?.content || '',
             usage: response?.usage || null,
             timeMs: Date.now() - startTime
         };
     }
 
-    // Audio buffer -> Whisper transcript -> both models in parallel.
-    async createReportFromAudio(buffer, originalName, options = {}) {
-        const models = Array.isArray(options.models) && options.models.length > 0
-            ? options.models
-            : MODELS;
-
-        const transcriptStart = Date.now();
-        const transcript = await this.transcribeBuffer(buffer, originalName);
-        const transcriptionTimeMs = Date.now() - transcriptStart;
-
-        if (!transcript || !transcript.trim()) {
-            throw new Error('Whisper returned an empty transcript for this audio');
+    // Accepts "gpt-4.1" or { model, version }. Throws on a bad version so the
+    // route can answer 400 before any OpenAI call is made.
+    normalizeModelSpec(spec) {
+        const raw = typeof spec === 'string' ? { model: spec } : (spec || {});
+        const model = (raw.model || '').toString().trim();
+        if (!model) {
+            throw new Error('Each entry in `models` needs a model name');
         }
+        return { model, version: this.normalizeVersion(raw.version) };
+    }
 
-        const usecase = await usecaseService.getUsecaseById(USECASE_ID);
-
-        const results = await Promise.all(models.map(async (model) => {
+    // Every file goes to Whisper at once; the joined text keeps upload order so
+    // a dictation split across clips still reads in sequence.
+    async transcribeAll(files) {
+        const transcripts = await Promise.all(files.map(async (file) => {
+            const startTime = Date.now();
             try {
-                return await this.runModel(usecase, model, transcript, options);
+                const text = await this.transcribeBuffer(file.buffer, file.originalname);
+                return {
+                    file: file.originalname,
+                    text: (text || '').trim(),
+                    timeMs: Date.now() - startTime
+                };
             } catch (error) {
-                console.error(`createReport model error (${model}):`, error.message);
-                return { model, output: null, error: error.message, timeMs: null };
+                throw new Error(`Whisper failed on "${file.originalname}": ${error.message}`);
             }
         }));
 
-        return { transcript, transcriptionTimeMs, results };
+        const empty = transcripts.filter(item => !item.text).map(item => item.file);
+        if (empty.length === transcripts.length) {
+            throw new Error('Whisper returned an empty transcript for every audio file');
+        }
+        if (empty.length) {
+            console.warn(`[createReport] empty transcript for: ${empty.join(', ')}`);
+        }
+
+        return transcripts;
+    }
+
+    // Audio files -> parallel Whisper -> joined transcript -> models in parallel.
+    async createReportFromAudio(files, options = {}) {
+        const audioFiles = Array.isArray(files) ? files : [files];
+        if (audioFiles.length === 0) {
+            throw new Error('No audio files provided');
+        }
+
+        const specs = (Array.isArray(options.models) && options.models.length > 0
+            ? options.models
+            : MODELS).map(spec => this.normalizeModelSpec(spec));
+
+        const transcriptStart = Date.now();
+        const transcripts = await this.transcribeAll(audioFiles);
+        const transcriptionTimeMs = Date.now() - transcriptStart;
+
+        const transcript = transcripts
+            .map(item => item.text)
+            .filter(Boolean)
+            .join('\n\n');
+
+        const usecase = await usecaseService.getUsecaseById(USECASE_ID);
+
+        const results = await Promise.all(specs.map(async ({ model, version }) => {
+            try {
+                return await this.runModel(usecase, model, transcript, options, version);
+            } catch (error) {
+                console.error(`createReport model error (${model} ${version || 'auto'}):`, error.message);
+                return {
+                    model,
+                    version,
+                    promptField: this.getPromptField(model, version),
+                    output: null,
+                    error: error.message,
+                    timeMs: null
+                };
+            }
+        }));
+
+        return { transcript, transcripts, transcriptionTimeMs, results };
     }
 }
 

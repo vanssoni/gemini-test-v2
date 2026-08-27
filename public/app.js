@@ -859,11 +859,12 @@ async function copyToClipboard(text, button) {
 const audioDropzone = document.getElementById('audioDropzone');
 const audioFileInput = document.getElementById('audioFileInput');
 const audioUploadButton = document.getElementById('audioUploadButton');
-const audioFileInfo = document.getElementById('audioFileInfo');
-const audioFileName = document.getElementById('audioFileName');
-const audioFileSize = document.getElementById('audioFileSize');
-const audioRemoveButton = document.getElementById('audioRemoveButton');
-const audioPreview = document.getElementById('audioPreview');
+const audioFileList = document.getElementById('audioFileList');
+const audioFileRows = document.getElementById('audioFileRows');
+const audioFileListCount = document.getElementById('audioFileListCount');
+const audioClearAllButton = document.getElementById('audioClearAllButton');
+const audioModelRows = document.getElementById('audioModelRows');
+const audioAddModelButton = document.getElementById('audioAddModelButton');
 const audioProcessButton = document.getElementById('audioProcessButton');
 const audioUploadSection = document.getElementById('audioUploadSection');
 const audioLoadingSection = document.getElementById('audioLoadingSection');
@@ -880,8 +881,17 @@ const audioCopyTranscript = document.getElementById('audioCopyTranscript');
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'm4a', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'flac', 'webm', 'aac'];
 const AUDIO_MAX_BYTES = 100 * 1024 * 1024;
 
-let selectedAudioFile = null;
-let audioPreviewUrl = null;
+const AUDIO_MAX_FILES = 20;
+const AUDIO_MODEL_CHOICES = ['gpt-4.1', 'gpt-5.6-sol'];
+const AUDIO_VERSION_CHOICES = [
+    { value: '', label: 'Auto (by model)' },
+    { value: 'v1', label: 'v1 - prompt' },
+    { value: 'v2', label: 'v2 - gpt_5_prompt' }
+];
+
+// Each entry is { file, url } — the object URL is kept so it can be revoked
+// when the row is removed.
+let selectedAudioFiles = [];
 let audioElapsedTimer = null;
 
 audioUploadButton.addEventListener('click', (event) => {
@@ -895,8 +905,9 @@ audioDropzone.addEventListener('click', (event) => {
 });
 
 audioFileInput.addEventListener('change', (event) => {
-    const file = event.target.files[0];
-    if (file) handleAudioFile(file);
+    addAudioFiles(event.target.files);
+    // Reset so re-picking the same file still fires a change event.
+    audioFileInput.value = '';
 });
 
 ['dragover', 'dragenter'].forEach((type) => {
@@ -914,14 +925,15 @@ audioFileInput.addEventListener('change', (event) => {
 });
 
 audioDropzone.addEventListener('drop', (event) => {
-    const file = event.dataTransfer.files[0];
-    if (file) handleAudioFile(file);
+    addAudioFiles(event.dataTransfer.files);
 });
 
-audioRemoveButton.addEventListener('click', (event) => {
+audioClearAllButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    clearAudioFile();
+    clearAudioFiles();
 });
+
+audioAddModelButton.addEventListener('click', () => addModelRow());
 
 audioProcessButton.addEventListener('click', runCreateReport);
 audioNewUploadButton.addEventListener('click', resetAudioToUpload);
@@ -935,48 +947,137 @@ function isAudioFile(file) {
     return file.type.startsWith('audio/') || file.type.startsWith('video/') || AUDIO_EXTENSIONS.includes(ext);
 }
 
-function handleAudioFile(file) {
-    if (!isAudioFile(file)) {
-        alert('Please select an audio file (wav, mp3, m4a, webm, ogg, flac).');
-        return;
+function addAudioFiles(fileList) {
+    const incoming = Array.from(fileList || []);
+    if (incoming.length === 0) return;
+
+    const rejected = [];
+    for (const file of incoming) {
+        if (!isAudioFile(file)) {
+            rejected.push(`${file.name} - not an audio file`);
+            continue;
+        }
+        if (file.size > AUDIO_MAX_BYTES) {
+            rejected.push(`${file.name} - larger than 100MB`);
+            continue;
+        }
+        if (selectedAudioFiles.length >= AUDIO_MAX_FILES) {
+            rejected.push(`${file.name} - over the ${AUDIO_MAX_FILES} file limit`);
+            continue;
+        }
+        // Same name + size twice is almost always a double-pick, not two clips.
+        if (selectedAudioFiles.some(item => item.file.name === file.name && item.file.size === file.size)) {
+            rejected.push(`${file.name} - already added`);
+            continue;
+        }
+        selectedAudioFiles.push({ file, url: URL.createObjectURL(file) });
     }
 
-    if (file.size > AUDIO_MAX_BYTES) {
-        alert('File is too large. Maximum size is 100MB.');
-        return;
+    if (rejected.length) {
+        alert(`Skipped:\n${rejected.join('\n')}`);
     }
-
-    selectedAudioFile = file;
-    audioFileName.textContent = file.name;
-    audioFileSize.textContent = formatFileSize(file.size);
-    audioFileSize.style.display = '';
-    audioFileInfo.style.display = 'block';
-
-    if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
-    audioPreviewUrl = URL.createObjectURL(file);
-    audioPreview.src = audioPreviewUrl;
-    audioPreview.style.display = '';
+    renderAudioFileList();
 }
 
-function clearAudioFile() {
-    selectedAudioFile = null;
+function removeAudioFile(index) {
+    const [removed] = selectedAudioFiles.splice(index, 1);
+    if (removed) URL.revokeObjectURL(removed.url);
+    renderAudioFileList();
+}
+
+function clearAudioFiles() {
+    selectedAudioFiles.forEach(item => URL.revokeObjectURL(item.url));
+    selectedAudioFiles = [];
     audioFileInput.value = '';
-    audioFileInfo.style.display = 'none';
-    audioPreview.style.display = 'none';
-    audioPreview.removeAttribute('src');
-    if (audioPreviewUrl) {
-        URL.revokeObjectURL(audioPreviewUrl);
-        audioPreviewUrl = null;
-    }
+    renderAudioFileList();
 }
+
+function renderAudioFileList() {
+    audioFileRows.innerHTML = '';
+
+    if (selectedAudioFiles.length === 0) {
+        audioFileList.style.display = 'none';
+        return;
+    }
+
+    audioFileList.style.display = 'block';
+    audioFileListCount.textContent = selectedAudioFiles.length === 1
+        ? '1 file'
+        : `${selectedAudioFiles.length} files`;
+
+    selectedAudioFiles.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'file-info audio-file-row';
+        row.innerHTML = `
+            <div class="file-details">
+                <span class="upload-pdf audio-file-icon">♪</span>
+                <div class="file-text">
+                    <p class="file-name"></p>
+                    <p class="file-size"></p>
+                </div>
+                <button type="button" class="remove-button">✕</button>
+            </div>
+            <audio class="audio-preview" controls></audio>`;
+        row.querySelector('.file-name').textContent = `${index + 1}. ${item.file.name}`;
+        row.querySelector('.file-size').textContent = formatFileSize(item.file.size);
+        row.querySelector('audio').src = item.url;
+        row.querySelector('.remove-button').addEventListener('click', (event) => {
+            event.stopPropagation();
+            removeAudioFile(index);
+        });
+        audioFileRows.appendChild(row);
+    });
+}
+
+function addModelRow(model = AUDIO_MODEL_CHOICES[0], version = '') {
+    const row = document.createElement('div');
+    row.className = 'audio-model-row';
+
+    const modelSelect = document.createElement('select');
+    modelSelect.className = 'audio-model-select';
+    for (const choice of AUDIO_MODEL_CHOICES) {
+        modelSelect.appendChild(new Option(choice, choice, false, choice === model));
+    }
+
+    const versionSelect = document.createElement('select');
+    versionSelect.className = 'audio-version-select';
+    for (const choice of AUDIO_VERSION_CHOICES) {
+        versionSelect.appendChild(new Option(choice.label, choice.value, false, choice.value === version));
+    }
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'remove-button';
+    removeButton.textContent = '✕';
+    removeButton.addEventListener('click', () => {
+        // Always leave one row so there is something to run.
+        if (audioModelRows.children.length > 1) row.remove();
+    });
+
+    row.appendChild(modelSelect);
+    row.appendChild(versionSelect);
+    row.appendChild(removeButton);
+    audioModelRows.appendChild(row);
+}
+
+function collectModelSpecs() {
+    return Array.from(audioModelRows.children).map((row) => {
+        const model = row.querySelector('.audio-model-select').value;
+        const version = row.querySelector('.audio-version-select').value;
+        return version ? { model, version } : { model };
+    });
+}
+
+addModelRow('gpt-4.1');
+addModelRow('gpt-5.6-sol');
 
 function audioOptionValue(id) {
     return (document.getElementById(id).value || '').trim();
 }
 
 async function runCreateReport() {
-    if (!selectedAudioFile) {
-        alert('Please select an audio file first.');
+    if (selectedAudioFiles.length === 0) {
+        alert('Please select at least one audio file first.');
         return;
     }
 
@@ -990,8 +1091,14 @@ async function runCreateReport() {
         }
     }
 
+    const specs = collectModelSpecs();
+
     const formData = new FormData();
-    formData.append('audio', selectedAudioFile);
+    // Repeat the same field name — multer collects them into req.files in order.
+    for (const item of selectedAudioFiles) {
+        formData.append('audio', item.file);
+    }
+    formData.append('models', JSON.stringify(specs));
 
     const optionalFields = {
         reportType: 'audioReportType',
@@ -1039,13 +1146,18 @@ function showAudioLoading() {
     audioLoadingSection.style.display = '';
 
     const startedAt = Date.now();
+    const fileCount = selectedAudioFiles.length;
+    const modelLabel = collectModelSpecs()
+        .map(spec => (spec.version ? `${spec.model} (${spec.version})` : spec.model))
+        .join(' and ');
+    const base = `Whisper on ${fileCount} file${fileCount === 1 ? '' : 's'}, then ${modelLabel}`;
+
     audioLoadingTitle.textContent = 'Transcribing and generating...';
-    audioLoadingText.textContent = 'Whisper, then gpt-4.1 and gpt-5.6-sol';
+    audioLoadingText.textContent = base;
 
     stopAudioElapsedTimer();
     audioElapsedTimer = setInterval(() => {
-        audioLoadingText.textContent =
-            `Whisper, then gpt-4.1 and gpt-5.6-sol - ${formatTime(Date.now() - startedAt)} elapsed`;
+        audioLoadingText.textContent = `${base} - ${formatTime(Date.now() - startedAt)} elapsed`;
     }, 500);
 }
 
@@ -1062,7 +1174,11 @@ function renderAudioResults(data) {
 
     const transcript = data.transcript || '';
     audioTranscriptText.textContent = transcript;
-    audioTranscriptCharCount.textContent = `${transcript.length} characters`;
+
+    const parts = data.transcripts || [];
+    audioTranscriptCharCount.textContent = parts.length > 1
+        ? `${transcript.length} characters from ${parts.length} files`
+        : `${transcript.length} characters`;
     audioTranscriptTime.querySelector('.time-value').textContent = formatTime(data.transcriptionTimeMs);
 
     audioResultsGrid.innerHTML = '';
@@ -1101,10 +1217,14 @@ function buildAudioResultCard(result) {
     const icon = header.querySelector('.result-icon');
     icon.classList.add(majorVersion === '4' ? 'model-4-icon' : 'model-5-icon');
     icon.textContent = majorVersion ? `G${majorVersion}` : 'AI';
-    header.querySelector('.result-title').textContent = result.model;
+    header.querySelector('.result-title').textContent = result.version
+        ? `${result.model} · ${result.version}`
+        : result.model;
     header.querySelector('.time-value').textContent = formatTime(result.timeMs);
-    if (usage) {
-        header.querySelector('.result-subtitle').textContent = usage;
+    // The prompt field is the whole point of the version picker, so name it.
+    const subtitleParts = [result.promptField, usage].filter(Boolean);
+    if (subtitleParts.length) {
+        header.querySelector('.result-subtitle').textContent = subtitleParts.join(' · ');
     }
     card.appendChild(header);
 
@@ -1160,5 +1280,5 @@ function resetAudioToUpload() {
     audioResultsSection.style.display = 'none';
     audioLoadingSection.style.display = 'none';
     audioUploadSection.style.display = '';
-    clearAudioFile();
+    clearAudioFiles();
 }

@@ -283,28 +283,35 @@
                         <img src="./uploadFile-D4mS2P4M.svg" alt="Upload" class="upload-image" />
                         <div style="margin-top: -13px;">
                             <p class="upload-description">
-                                Drag &amp; Drop or Click to Upload Audio
+                                Drag &amp; Drop or Click to Upload Audio (one or more)
                             </p>
-                            <input type="file" id="audioFileInput" accept="audio/*,.wav,.mp3,.m4a,.webm,.ogg,.flac" hidden>
+                            <input type="file" id="audioFileInput" accept="audio/*,.wav,.mp3,.m4a,.webm,.ogg,.flac" multiple hidden>
                             <button class="upload-button" id="audioUploadButton" style="display: none;">
                                 Choose File
                             </button>
-                            <p class="upload-hint">wav, mp3, m4a, webm, ogg, flac - Max file size 100MB</p>
+                            <p class="upload-hint">wav, mp3, m4a, webm, ogg, flac - up to 20 files, 100MB each</p>
                         </div>
                     </div>
 
-                    <div class="file-info" id="audioFileInfo">
-                        <div class="file-details">
-                            <span class="upload-pdf audio-file-icon">♪</span>
-                            <div class="file-text">
-                                <p class="file-name" id="audioFileName"></p>
-                                <p class="file-size" id="audioFileSize" style="display: none;"></p>
-                            </div>
-                            <button class="remove-button" id="audioRemoveButton">✕</button>
+                    <div class="audio-file-list" id="audioFileList" style="display: none;">
+                        <div class="audio-file-list-header">
+                            <span id="audioFileListCount"></span>
+                            <button type="button" class="audio-clear-button" id="audioClearAllButton">Clear all</button>
                         </div>
+                        <div id="audioFileRows"></div>
+                        <p class="audio-file-list-hint">Transcribed in parallel, then joined in this order.</p>
                     </div>
 
-                    <audio id="audioPreview" class="audio-preview" controls style="display: none;"></audio>
+                    <div class="audio-models" id="audioModels">
+                        <div class="audio-models-header">
+                            <span class="audio-field-label">Models &amp; prompt version</span>
+                            <button type="button" class="audio-clear-button" id="audioAddModelButton">+ Add model</button>
+                        </div>
+                        <div id="audioModelRows"></div>
+                        <p class="audio-file-list-hint">
+                            Auto = prompt field picked from the model version. v1 = <code>prompt</code>, v2 = <code>gpt_5_prompt</code>.
+                        </p>
+                    </div>
 
                     <details class="audio-options">
                         <summary class="audio-options-summary">Prompt options (optional)</summary>
