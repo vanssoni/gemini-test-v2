@@ -1382,3 +1382,68 @@ button,
     outline: none;
     border-color: #14b8a6;
 }
+
+/* Audio recorder */
+.audio-recorder {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.audio-recorder-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.audio-record-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.audio-record-button:hover:not(:disabled) {
+    border-color: #94a3b8;
+}
+
+.audio-record-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.audio-record-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+}
+
+.audio-recorder.is-recording .audio-record-dot {
+    animation: audio-record-pulse 1s ease-in-out infinite;
+}
+
+.audio-recorder.is-recording .audio-record-button {
+    border-color: #ef4444;
+    color: #b91c1c;
+}
+
+@keyframes audio-record-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+}
+
+.audio-record-timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: #64748b;
+}

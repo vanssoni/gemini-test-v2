@@ -293,6 +293,19 @@
                         </div>
                     </div>
 
+                    <div class="audio-recorder" id="audioRecorder">
+                        <div class="audio-recorder-main">
+                            <button type="button" class="audio-record-button" id="audioRecordButton">
+                                <span class="audio-record-dot"></span>
+                                <span id="audioRecordLabel">Record audio</span>
+                            </button>
+                            <span class="audio-record-timer" id="audioRecordTimer">00:00</span>
+                        </div>
+                        <p class="audio-file-list-hint" id="audioRecorderHint">
+                            Records one clip, then adds it to the list below as recording-N.webm - a single file sent through the same <code>audio</code> field.
+                        </p>
+                    </div>
+
                     <div class="audio-file-list" id="audioFileList" style="display: none;">
                         <div class="audio-file-list-header">
                             <span id="audioFileListCount"></span>

@@ -878,6 +878,12 @@ const audioTranscriptTime = document.getElementById('audioTranscriptTime');
 const audioTranscriptCharCount = document.getElementById('audioTranscriptCharCount');
 const audioCopyTranscript = document.getElementById('audioCopyTranscript');
 
+const audioRecorder = document.getElementById('audioRecorder');
+const audioRecordButton = document.getElementById('audioRecordButton');
+const audioRecordLabel = document.getElementById('audioRecordLabel');
+const audioRecordTimer = document.getElementById('audioRecordTimer');
+const audioRecorderHint = document.getElementById('audioRecorderHint');
+
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'm4a', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'flac', 'webm', 'aac'];
 const AUDIO_MAX_BYTES = 100 * 1024 * 1024;
 
@@ -940,6 +946,111 @@ audioNewUploadButton.addEventListener('click', resetAudioToUpload);
 audioCopyTranscript.addEventListener('click', () => {
     copyToClipboard(audioTranscriptText.textContent, audioCopyTranscript);
 });
+
+// ---------- Recording ----------
+// MediaRecorder gives us a Blob, not a File, and a Blob appended to FormData
+// arrives at the server named "blob" with no extension. Whisper infers the
+// format from the extension, so we always wrap the blob in a real File with a
+// matching one. Recording produces a single file; it joins the same list as
+// picked files and is sent through the same `audio` field.
+const AUDIO_RECORDER_TYPES = [
+    { mimeType: 'audio/webm;codecs=opus', ext: 'webm' },
+    { mimeType: 'audio/webm', ext: 'webm' },
+    { mimeType: 'audio/mp4', ext: 'mp4' },   // Safari
+    { mimeType: 'audio/ogg;codecs=opus', ext: 'ogg' }
+];
+
+let mediaRecorder = null;
+let recorderStream = null;
+let recordedChunks = [];
+let recordTimerId = null;
+let recordStartedAt = 0;
+let recordingCount = 0;
+
+function pickRecorderType() {
+    if (typeof MediaRecorder === 'undefined') return null;
+    return AUDIO_RECORDER_TYPES.find(item => MediaRecorder.isTypeSupported(item.mimeType)) || null;
+}
+
+if (!navigator.mediaDevices?.getUserMedia || !pickRecorderType()) {
+    audioRecordButton.disabled = true;
+    audioRecorderHint.textContent = 'Recording is not supported in this browser (needs MediaRecorder over https or localhost).';
+} else {
+    audioRecordButton.addEventListener('click', toggleRecording);
+}
+
+function formatRecordTime(ms) {
+    const total = Math.floor(ms / 1000);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+async function toggleRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        return;
+    }
+    await startRecording();
+}
+
+async function startRecording() {
+    const type = pickRecorderType();
+    try {
+        recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+        alert(`Could not start the microphone: ${error.message}`);
+        return;
+    }
+
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(recorderStream, { mimeType: type.mimeType });
+
+    mediaRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+    });
+
+    mediaRecorder.addEventListener('stop', () => {
+        stopRecordTimer();
+        recorderStream.getTracks().forEach(track => track.stop());
+        recorderStream = null;
+
+        const blob = new Blob(recordedChunks, { type: type.mimeType });
+        recordedChunks = [];
+
+        if (blob.size === 0) {
+            alert('Nothing was recorded.');
+            return;
+        }
+
+        recordingCount += 1;
+        // The third argument is the filename the server sees — without it the
+        // part is named "blob" and Whisper rejects it.
+        const file = new File([blob], `recording-${recordingCount}.${type.ext}`, { type: type.mimeType });
+        addAudioFiles([file]);
+    });
+
+    mediaRecorder.start();
+    startRecordTimer();
+    setRecordingUi(true);
+}
+
+function setRecordingUi(recording) {
+    audioRecorder.classList.toggle('is-recording', recording);
+    audioRecordLabel.textContent = recording ? 'Stop recording' : 'Record audio';
+}
+
+function startRecordTimer() {
+    recordStartedAt = Date.now();
+    audioRecordTimer.textContent = '00:00';
+    recordTimerId = setInterval(() => {
+        audioRecordTimer.textContent = formatRecordTime(Date.now() - recordStartedAt);
+    }, 250);
+}
+
+function stopRecordTimer() {
+    clearInterval(recordTimerId);
+    recordTimerId = null;
+    setRecordingUi(false);
+}
 
 function isAudioFile(file) {
     const ext = (file.name.split('.').pop() || '').toLowerCase();
