@@ -1249,7 +1249,8 @@ button,
 }
 
 .audio-field input,
-.audio-field textarea {
+.audio-field textarea,
+.audio-field select {
     width: 100%;
     box-sizing: border-box;
     border: 1px solid #e2e8f0;
@@ -1263,9 +1264,42 @@ button,
 }
 
 .audio-field input:focus,
-.audio-field textarea:focus {
+.audio-field textarea:focus,
+.audio-field select:focus {
     outline: none;
     border-color: #6366f1;
+}
+
+.audio-field input[readonly] {
+    background: #f8fafc;
+    color: #475569;
+}
+
+.audio-userid-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.audio-userid-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.audio-userid-row .upload-button,
+.audio-userid-row .process-button {
+    margin: 0;
+    white-space: nowrap;
+    padding: 8px 14px;
+    font-size: 13px;
+}
+
+.audio-settings-status-ok {
+    color: #0f766e;
+}
+
+.audio-settings-status-err {
+    color: #b91c1c;
 }
 
 .transcript-card .result-text {

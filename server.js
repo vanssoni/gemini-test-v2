@@ -10,6 +10,7 @@ const comparisonHelper = require('./comparison-helper');
 const generateService = require('./generate-service');
 const goldStandardService = require('./gold-standard-service');
 const createReportService = require('./create-report-service');
+const userReportSettingsService = require('./user-report-settings-service');
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
 
@@ -722,8 +723,49 @@ app.delete('/api/gold-standards/runs/:jobId', (req, res) => {
     res.json({ success: goldStandardJobs.delete(req.params.jobId) });
 });
 
+// Super-admin: read analysis settings for a clinician userId.
+// Stored in createReportAnalysisSettings — NOT the production user profile.
+// Shared across all super admins; userId (clinician) is required.
+app.get('/api/create-report/settings', async (req, res) => {
+    try {
+        const userId = (req.query.userId || '').toString().trim();
+        if (!userId) {
+            return res.status(400).json({ success: false, error: 'userId is required' });
+        }
+
+        const settings = await userReportSettingsService.getSettings(userId);
+        res.json({ success: true, settings });
+    } catch (error) {
+        console.error('create-report settings get error:', error);
+        const isClientError = /userId must be|User not found/.test(error.message);
+        res.status(isClientError ? 400 : 500).json({ success: false, error: error.message });
+    }
+});
+
+// Super-admin: save analysis settings for a clinician. Does not touch users / update-profile.
+app.post('/api/create-report/settings', async (req, res) => {
+    try {
+        const body = req.body || {};
+        const userId = (body.userId || '').toString().trim();
+        if (!userId) {
+            return res.status(400).json({ success: false, error: 'userId is required' });
+        }
+
+        const settings = await userReportSettingsService.saveSettings(userId, body);
+        res.json({ success: true, message: 'Create-report analysis settings saved', settings });
+    } catch (error) {
+        console.error('create-report settings save error:', error);
+        const isClientError = /userId must be|User not found|must be|Nothing to update|prescriptions must/.test(
+            error.message
+        );
+        res.status(isClientError ? 400 : 500).json({ success: false, error: error.message });
+    }
+});
+
 // Audio in -> Whisper transcript -> Create Report AI on both models.
 // Synchronous: the response carries the transcript and both outputs.
+// Optional userId: when set, customInstructions / referenceRanges / prescriptions /
+// clinicianSpeciality come from createReportAnalysisSettings (payload values ignored).
 app.post('/api/create-report', uploadAudio, async (req, res) => {
     const startTime = Date.now();
 
@@ -734,6 +776,8 @@ app.post('/api/create-report', uploadAudio, async (req, res) => {
         }
 
         const body = req.body || {};
+        const userId = (body.userId || '').toString().trim() || null;
+
         let prescriptions = body.prescriptions;
         if (typeof prescriptions === 'string' && prescriptions.trim()) {
             try {
@@ -756,22 +800,37 @@ app.post('/api/create-report', uploadAudio, async (req, res) => {
             }
         }
 
+        let options = {
+            models,
+            reportType: body.reportType,
+            reportStructure: body.reportStructure,
+            clinicianSpeciality: body.clinicianSpeciality,
+            customInstructions: body.customInstructions,
+            referenceRanges: body.referenceRanges,
+            existingText: body.existingText,
+            prescriptions
+        };
+
+        if (userId) {
+            const fromDb = await userReportSettingsService.getCreateReportOptions(userId);
+            options = {
+                ...options,
+                customInstructions: fromDb.customInstructions,
+                referenceRanges: fromDb.referenceRanges,
+                clinicianSpeciality: fromDb.clinicianSpeciality,
+                prescriptions: fromDb.prescriptions
+            };
+        }
+
         const { transcript, transcripts, transcriptionTimeMs, results } = await createReportService.createReportFromAudio(
             files,
-            {
-                models,
-                reportType: body.reportType,
-                reportStructure: body.reportStructure,
-                clinicianSpeciality: body.clinicianSpeciality,
-                customInstructions: body.customInstructions,
-                referenceRanges: body.referenceRanges,
-                existingText: body.existingText,
-                prescriptions
-            }
+            options
         );
 
         res.json({
             success: true,
+            userId,
+            settingsSource: userId ? 'analysis' : 'payload',
             audioFiles: files.map(file => file.originalname),
             transcript,
             transcripts,
@@ -781,7 +840,7 @@ app.post('/api/create-report', uploadAudio, async (req, res) => {
         });
     } catch (error) {
         console.error('create-report error:', error);
-        const isClientError = /Unsupported prompt version|needs a model name|No audio files/.test(error.message);
+        const isClientError = /Unsupported prompt version|needs a model name|No audio files|userId must be|User not found/.test(error.message);
         res.status(isClientError ? 400 : 500).json({
             success: false,
             error: error.message,

@@ -941,6 +941,13 @@ audioClearAllButton.addEventListener('click', (event) => {
 
 audioAddModelButton.addEventListener('click', () => addModelRow());
 
+const audioLoadSettingsButton = document.getElementById('audioLoadSettingsButton');
+const audioSaveSettingsButton = document.getElementById('audioSaveSettingsButton');
+const audioSettingsStatus = document.getElementById('audioSettingsStatus');
+
+audioLoadSettingsButton.addEventListener('click', loadAudioAnalysisSettings);
+audioSaveSettingsButton.addEventListener('click', saveAudioAnalysisSettings);
+
 audioProcessButton.addEventListener('click', runCreateReport);
 audioNewUploadButton.addEventListener('click', resetAudioToUpload);
 audioCopyTranscript.addEventListener('click', () => {
@@ -1186,14 +1193,131 @@ function audioOptionValue(id) {
     return (document.getElementById(id).value || '').trim();
 }
 
+function setAudioSettingsStatus(message, kind = '') {
+    audioSettingsStatus.textContent = message;
+    audioSettingsStatus.classList.remove('audio-settings-status-ok', 'audio-settings-status-err');
+    if (kind === 'ok') audioSettingsStatus.classList.add('audio-settings-status-ok');
+    if (kind === 'err') audioSettingsStatus.classList.add('audio-settings-status-err');
+}
+
+function fillAudioAnalysisSettings(settings) {
+    const meta = [settings.name, settings.email, settings.specialization]
+        .filter(Boolean)
+        .join(' · ');
+    document.getElementById('audioClinicianMeta').value = meta || '(no name / email on user)';
+    document.getElementById('audioCustomInstructions').value =
+        settings.customCreateReportInstructions || '';
+    document.getElementById('audioReferenceRanges').value =
+        settings.createReportReferenceRangesType || '';
+    document.getElementById('audioCreateReportVersion').value =
+        settings.createReportVersion || '';
+    document.getElementById('audioPrescriptions').value = JSON.stringify(
+        settings.prescriptions || [],
+        null,
+        2
+    );
+}
+
+function parseAudioPrescriptionsField() {
+    const raw = audioOptionValue('audioPrescriptions');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+        throw new Error('Prescriptions must be a JSON array of strings');
+    }
+    return parsed;
+}
+
+async function loadAudioAnalysisSettings() {
+    const userId = audioOptionValue('audioUserId');
+    if (!userId) {
+        alert('Enter a clinician userId first.');
+        return;
+    }
+
+    audioLoadSettingsButton.disabled = true;
+    setAudioSettingsStatus('Loading analysis settings…');
+
+    try {
+        const response = await fetch(
+            apiUrl(`/api/create-report/settings?userId=${encodeURIComponent(userId)}`)
+        );
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Request failed with status ${response.status}`);
+        }
+        fillAudioAnalysisSettings(data.settings);
+        setAudioSettingsStatus(
+            data.settings.analysisRecordId
+                ? `Loaded analysis settings for ${data.settings.userId}`
+                : `No analysis doc yet for ${data.settings.userId} — fields are empty defaults. Save to create one.`,
+            'ok'
+        );
+    } catch (error) {
+        console.error('load analysis settings error:', error);
+        setAudioSettingsStatus(error.message, 'err');
+        alert(error.message);
+    } finally {
+        audioLoadSettingsButton.disabled = false;
+    }
+}
+
+async function saveAudioAnalysisSettings() {
+    const userId = audioOptionValue('audioUserId');
+    if (!userId) {
+        alert('Enter a clinician userId first.');
+        return;
+    }
+
+    let prescriptions;
+    try {
+        prescriptions = parseAudioPrescriptionsField();
+    } catch (error) {
+        alert(error.message);
+        return;
+    }
+
+    const body = {
+        userId,
+        customCreateReportInstructions: document.getElementById('audioCustomInstructions').value,
+        createReportReferenceRangesType: document.getElementById('audioReferenceRanges').value || null,
+        createReportVersion: document.getElementById('audioCreateReportVersion').value || null,
+        prescriptions
+    };
+
+    audioSaveSettingsButton.disabled = true;
+    setAudioSettingsStatus('Saving analysis settings…');
+
+    try {
+        const response = await fetch(apiUrl('/api/create-report/settings'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Request failed with status ${response.status}`);
+        }
+        fillAudioAnalysisSettings(data.settings);
+        setAudioSettingsStatus(`Saved analysis settings for ${data.settings.userId}`, 'ok');
+    } catch (error) {
+        console.error('save analysis settings error:', error);
+        setAudioSettingsStatus(error.message, 'err');
+        alert(error.message);
+    } finally {
+        audioSaveSettingsButton.disabled = false;
+    }
+}
+
 async function runCreateReport() {
     if (selectedAudioFiles.length === 0) {
         alert('Please select at least one audio file first.');
         return;
     }
 
+    const userId = audioOptionValue('audioUserId');
     const prescriptions = audioOptionValue('audioPrescriptions');
-    if (prescriptions) {
+    if (!userId && prescriptions) {
         try {
             JSON.parse(prescriptions);
         } catch (error) {
@@ -1211,17 +1335,29 @@ async function runCreateReport() {
     }
     formData.append('models', JSON.stringify(specs));
 
-    const optionalFields = {
-        reportType: 'audioReportType',
-        clinicianSpeciality: 'audioClinicianSpeciality',
-        referenceRanges: 'audioReferenceRanges',
-        customInstructions: 'audioCustomInstructions',
-        reportStructure: 'audioReportStructure',
-        existingText: 'audioExistingText',
-        prescriptions: 'audioPrescriptions'
-    };
+    if (userId) {
+        // Backend loads instructions / ranges / prescriptions / speciality from
+        // createReportAnalysisSettings — do not send those payload fields.
+        formData.append('userId', userId);
+    } else {
+        const optionalFields = {
+            clinicianSpeciality: 'audioClinicianSpeciality',
+            referenceRanges: 'audioReferenceRanges',
+            customInstructions: 'audioCustomInstructions',
+            prescriptions: 'audioPrescriptions'
+        };
+        for (const [field, elementId] of Object.entries(optionalFields)) {
+            const value = audioOptionValue(elementId);
+            if (value) formData.append(field, value);
+        }
+    }
 
-    for (const [field, elementId] of Object.entries(optionalFields)) {
+    const alwaysOptional = {
+        reportType: 'audioReportType',
+        reportStructure: 'audioReportStructure',
+        existingText: 'audioExistingText'
+    };
+    for (const [field, elementId] of Object.entries(alwaysOptional)) {
         const value = audioOptionValue(elementId);
         if (value) formData.append(field, value);
     }
@@ -1287,9 +1423,12 @@ function renderAudioResults(data) {
     audioTranscriptText.textContent = transcript;
 
     const parts = data.transcripts || [];
+    const sourceNote = data.settingsSource
+        ? ` · settings: ${data.settingsSource}${data.userId ? ` (${data.userId})` : ''}`
+        : '';
     audioTranscriptCharCount.textContent = parts.length > 1
-        ? `${transcript.length} characters from ${parts.length} files`
-        : `${transcript.length} characters`;
+        ? `${transcript.length} characters from ${parts.length} files${sourceNote}`
+        : `${transcript.length} characters${sourceNote}`;
     audioTranscriptTime.querySelector('.time-value').textContent = formatTime(data.transcriptionTimeMs);
 
     audioResultsGrid.innerHTML = '';

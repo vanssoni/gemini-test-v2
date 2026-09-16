@@ -326,36 +326,71 @@
                         </p>
                     </div>
 
+                    <details class="audio-options" open>
+                        <summary class="audio-options-summary">Super-admin analysis (clinician userId)</summary>
+                        <div class="audio-options-grid">
+                            <label class="audio-field audio-field-wide">
+                                <span class="audio-field-label">Clinician userId</span>
+                                <div class="audio-userid-row">
+                                    <input type="text" id="audioUserId" value="682358226399b1486050b04a" placeholder="Mongo ObjectId of the clinician">
+                                    <button type="button" class="upload-button" id="audioLoadSettingsButton">Load</button>
+                                    <button type="button" class="process-button" id="audioSaveSettingsButton">Save</button>
+                                </div>
+                            </label>
+                            <p class="audio-file-list-hint audio-field-wide" id="audioSettingsStatus">
+                                Optional. When set, generate loads custom instructions / reference ranges / prescriptions
+                                from <code>createReportAnalysisSettings</code> (not the live user profile). Load/Save edit that analysis doc — shared by all super admins.
+                            </p>
+                            <label class="audio-field">
+                                <span class="audio-field-label">Clinician (from users)</span>
+                                <input type="text" id="audioClinicianMeta" readonly placeholder="Load settings to see name / email / speciality">
+                            </label>
+                            <label class="audio-field">
+                                <span class="audio-field-label">Reference Ranges</span>
+                                <select id="audioReferenceRanges">
+                                    <option value="">None</option>
+                                    <option value="standard">standard</option>
+                                    <option value="functional">functional</option>
+                                    <option value="pediatric">pediatric</option>
+                                </select>
+                            </label>
+                            <label class="audio-field audio-field-wide">
+                                <span class="audio-field-label">Custom Instructions</span>
+                                <textarea id="audioCustomInstructions" rows="3" placeholder="Analysis overrides for this clinician"></textarea>
+                            </label>
+                            <label class="audio-field">
+                                <span class="audio-field-label">Prompt version override</span>
+                                <select id="audioCreateReportVersion">
+                                    <option value="">Automatic</option>
+                                    <option value="v1">v1</option>
+                                    <option value="v2">v2</option>
+                                </select>
+                            </label>
+                            <label class="audio-field">
+                                <span class="audio-field-label">Prescriptions (JSON array of strings)</span>
+                                <textarea id="audioPrescriptions" rows="3" placeholder='e.g. ["Pantoprazole","Omeprazole"]'></textarea>
+                            </label>
+                        </div>
+                    </details>
+
                     <details class="audio-options">
-                        <summary class="audio-options-summary">Prompt options (optional)</summary>
+                        <summary class="audio-options-summary">Prompt options (optional — ignored for fields above when userId is set)</summary>
                         <div class="audio-options-grid">
                             <label class="audio-field">
                                 <span class="audio-field-label">Report Type</span>
                                 <input type="text" id="audioReportType" placeholder="e.g. Consultation Note">
                             </label>
                             <label class="audio-field">
-                                <span class="audio-field-label">Clinician Speciality</span>
-                                <input type="text" id="audioClinicianSpeciality" placeholder="e.g. Gastroenterology">
-                            </label>
-                            <label class="audio-field">
-                                <span class="audio-field-label">Reference Ranges</span>
-                                <input type="text" id="audioReferenceRanges" placeholder="e.g. Indian">
-                            </label>
-                            <label class="audio-field">
-                                <span class="audio-field-label">Custom Instructions</span>
-                                <textarea id="audioCustomInstructions" rows="3" placeholder="Extra instructions for the model"></textarea>
+                                <span class="audio-field-label">Clinician Speciality (payload only)</span>
+                                <input type="text" id="audioClinicianSpeciality" placeholder="Used only when userId is blank">
                             </label>
                             <label class="audio-field audio-field-wide">
                                 <span class="audio-field-label">Report Structure</span>
                                 <textarea id="audioReportStructure" rows="5" placeholder="Leave blank to use the default structure"></textarea>
                             </label>
-                            <label class="audio-field">
+                            <label class="audio-field audio-field-wide">
                                 <span class="audio-field-label">Existing Report Text</span>
                                 <textarea id="audioExistingText" rows="3" placeholder="Text to append to, if any"></textarea>
-                            </label>
-                            <label class="audio-field">
-                                <span class="audio-field-label">Prescriptions (JSON)</span>
-                                <textarea id="audioPrescriptions" rows="3" placeholder='e.g. [{"name":"Pantoprazole"}]'></textarea>
                             </label>
                         </div>
                     </details>
