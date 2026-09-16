@@ -348,10 +348,10 @@
                             <label class="audio-field">
                                 <span class="audio-field-label">Reference Ranges</span>
                                 <select id="audioReferenceRanges">
-                                    <option value="">None</option>
-                                    <option value="standard">standard</option>
-                                    <option value="functional">functional</option>
-                                    <option value="pediatric">pediatric</option>
+                                    <option value="">Default</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="functional">Functional</option>
+                                    <option value="pediatric">Pediatric</option>
                                 </select>
                             </label>
                             <label class="audio-field audio-field-wide">
@@ -367,8 +367,8 @@
                                 </select>
                             </label>
                             <label class="audio-field">
-                                <span class="audio-field-label">Prescriptions (JSON array of strings)</span>
-                                <textarea id="audioPrescriptions" rows="3" placeholder='e.g. ["Pantoprazole","Omeprazole"]'></textarea>
+                                <span class="audio-field-label">Prescriptions (string array — same as user-prescriptions)</span>
+                                <textarea id="audioPrescriptions" rows="3" placeholder='e.g. ["Hello", "abc"]'></textarea>
                             </label>
                         </div>
                     </details>
