@@ -9,7 +9,7 @@ const USECASE_ID = 'createReportAi';
 // The two models we benchmark against each other. usecase.model from Mongo is
 // ignored on purpose — each run overrides it so both models see the prompt
 // field that belongs to their major version (prompt vs gpt_5_prompt).
-const MODELS = ['gpt-4.1', 'gpt-5.6-sol'];
+const MODELS = ['gpt-4.1', 'gpt-6.1'];
 
 // Prompt versions are decoupled from the model on purpose: the caller picks
 // which usecase field to read, so gpt-4.1 can run the gpt_5_prompt text and
@@ -63,8 +63,8 @@ class CreateReportService {
     }
 
     // Which usecase field to read. An explicit version wins; without one this
-    // is the onehealth rule — gpt-4.x reads `prompt`, anything else reads
-    // `gpt_<major>_prompt`.
+    // is the onehealth rule — gpt-4.x reads `prompt`, gpt-5+ (incl. gpt-6.1)
+    // reads the shared v2 field `gpt_5_prompt`.
     getPromptField(model, version) {
         const key = this.normalizeVersion(version);
         if (key) {
@@ -73,9 +73,9 @@ class CreateReportService {
 
         const normalized = (model || '').toString().trim().toLowerCase();
         const modelMatch = normalized.match(/^gpt-(\d+)/);
-        const modelMajorVersion = modelMatch ? modelMatch[1] : null;
-        return modelMajorVersion && modelMajorVersion !== '4'
-            ? `gpt_${modelMajorVersion}_prompt`
+        const modelMajorVersion = modelMatch ? Number(modelMatch[1]) : null;
+        return modelMajorVersion && modelMajorVersion >= 5
+            ? 'gpt_5_prompt'
             : 'prompt';
     }
 
@@ -91,17 +91,30 @@ class CreateReportService {
         return (usecase?.prompt ?? '').toString();
     }
 
-    // Reasoning controls only exist on the gpt-5 line; sending them to gpt-4.1
-    // is a 400, so they are scoped by major version here.
+    // Allowed reasoning_effort values differ by model family.
+    // gpt-6+ (e.g. gpt-6.1-sol) rejects `none` and `max`.
+    getAllowedReasoningEffort(model) {
+        const normalized = (model || '').toString().trim().toLowerCase();
+        const modelMatch = normalized.match(/^gpt-(\d+)/);
+        const major = modelMatch ? Number(modelMatch[1]) : null;
+        if (major !== null && major >= 6) {
+            return ['low', 'medium', 'high', 'xhigh'];
+        }
+        return ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+    }
+
+    // Reasoning controls only exist on gpt-5+ (and the o* series elsewhere);
+    // sending them to gpt-4.1 is a 400, so they are scoped by major version here.
+    // Values the target model rejects (e.g. `none` on gpt-6.1) are omitted.
     getReasoningParams(usecase, model) {
         const normalized = (model || '').toString().trim().toLowerCase();
         const modelMatch = normalized.match(/^gpt-(\d+)/);
-        if (!modelMatch || modelMatch[1] === '4') {
+        if (!modelMatch || Number(modelMatch[1]) < 5) {
             return {};
         }
 
         const allowed = {
-            reasoning_effort: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+            reasoning_effort: this.getAllowedReasoningEffort(model),
             verbosity: ['low', 'medium', 'high'],
         };
 
@@ -110,7 +123,7 @@ class CreateReportService {
             const value = (usecase?.[field] ?? '').toString().trim().toLowerCase();
             if (!value) continue;
             if (!values.includes(value)) {
-                console.warn(`[createReport] ignoring unsupported ${field}="${value}" on usecase ${usecase?._id}`);
+                console.warn(`[createReport] ignoring unsupported ${field}="${value}" for model "${model}" on usecase ${usecase?._id}`);
                 continue;
             }
             params[field] = value;

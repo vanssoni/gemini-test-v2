@@ -888,7 +888,7 @@ const AUDIO_EXTENSIONS = ['wav', 'mp3', 'm4a', 'mp4', 'mpeg', 'mpga', 'oga', 'og
 const AUDIO_MAX_BYTES = 100 * 1024 * 1024;
 
 const AUDIO_MAX_FILES = 20;
-const AUDIO_MODEL_CHOICES = ['gpt-4.1', 'gpt-5.6-sol'];
+const AUDIO_MODEL_CHOICES = ['gpt-4.1', 'gpt-5.6-sol', 'gpt-6.1'];
 const AUDIO_VERSION_CHOICES = [
     { value: '', label: 'Auto (by model)' },
     { value: 'v1', label: 'v1 - prompt' },
@@ -1187,7 +1187,7 @@ function collectModelSpecs() {
 }
 
 addModelRow('gpt-4.1');
-addModelRow('gpt-5.6-sol');
+addModelRow('gpt-6.1');
 
 function audioOptionValue(id) {
     return (document.getElementById(id).value || '').trim();

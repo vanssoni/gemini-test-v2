@@ -23,9 +23,11 @@ class GenerateService {
     getPromptByModel(usecase) {
         const model = (usecase?.model || '').toString().trim().toLowerCase();
         const modelMatch = model.match(/^gpt-(\d+)/);
-        const modelMajorVersion = modelMatch ? modelMatch[1] : null;
-        const promptField = modelMajorVersion && modelMajorVersion !== '4'
-            ? `gpt_${modelMajorVersion}_prompt`
+        const modelMajorVersion = modelMatch ? Number(modelMatch[1]) : null;
+        // Share the v2 field (`gpt_5_prompt`) for gpt-5 and newer (e.g. gpt-6.1)
+        // until a dedicated newer prompt field is introduced.
+        const promptField = modelMajorVersion && modelMajorVersion >= 5
+            ? 'gpt_5_prompt'
             : 'prompt';
 
         const modelPrompt = (usecase?.[promptField] ?? '').toString().trim();
