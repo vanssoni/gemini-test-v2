@@ -53,6 +53,26 @@ class GenerateService {
         }
     }
 
+    // Reasoning models (o*, gpt-5+) reject custom temperature/top_p unless
+    // reasoning_effort is explicitly `none` (and the model allows `none`).
+    supportsSamplingParams(model, reasoningEffort = null) {
+        const normalized = (model || '').toString().trim().toLowerCase();
+        if (/^o\d/.test(normalized)) {
+            // o-series never accepts custom sampling in practice
+            return (reasoningEffort ?? '').toString().trim().toLowerCase() === 'none';
+        }
+        const modelMatch = normalized.match(/^gpt-(\d+)/);
+        if (!modelMatch || Number(modelMatch[1]) < 5) {
+            return true;
+        }
+        const effort = (reasoningEffort ?? '').toString().trim().toLowerCase();
+        // gpt-6+ does not support `none`
+        if (Number(modelMatch[1]) >= 6) {
+            return false;
+        }
+        return effort === 'none';
+    }
+
     buildOpenAiParams(usecase, messages) {
         const params = {
             model: usecase.model,
@@ -76,6 +96,12 @@ class GenerateService {
                 delete params[key];
             }
         });
+
+        if (!this.supportsSamplingParams(params.model, params.reasoning_effort)) {
+            for (const key of ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty']) {
+                delete params[key];
+            }
+        }
 
         return params;
     }

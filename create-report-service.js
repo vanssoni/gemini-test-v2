@@ -103,6 +103,35 @@ class CreateReportService {
         return ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
     }
 
+    // OpenAI GPT-6 migration: when reasoning effort is not `none`, remove
+    // temperature / top_p / logprobs. Models that never support `none`
+    // (gpt-6.1-sol) therefore never accept custom sampling.
+    supportsSamplingParams(model, reasoningEffort = null) {
+        const normalized = (model || '').toString().trim().toLowerCase();
+        const modelMatch = normalized.match(/^gpt-(\d+)/);
+        const isReasoning = /^o\d/.test(normalized) || (!!modelMatch && Number(modelMatch[1]) >= 5);
+        if (!isReasoning) {
+            return true;
+        }
+        const effort = (reasoningEffort ?? '').toString().trim().toLowerCase();
+        return effort === 'none' && this.getAllowedReasoningEffort(model).includes('none');
+    }
+
+    applyModelParamConstraints(params) {
+        if (!params || typeof params !== 'object') {
+            return params;
+        }
+        if (this.supportsSamplingParams(params.model, params.reasoning_effort)) {
+            return params;
+        }
+        for (const key of ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'logprobs', 'top_logprobs']) {
+            if (params[key] !== undefined) {
+                delete params[key];
+            }
+        }
+        return params;
+    }
+
     // Reasoning controls only exist on gpt-5+ (and the o* series elsewhere);
     // sending them to gpt-4.1 is a 400, so they are scoped by major version here.
     // Values the target model rejects (e.g. `none` on gpt-6.1) are omitted.
@@ -266,6 +295,8 @@ class CreateReportService {
                 delete params[key];
             }
         });
+
+        this.applyModelParamConstraints(params);
 
         const startTime = Date.now();
         const response = await this.hitOpenAICompletion(params);
