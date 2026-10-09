@@ -30,6 +30,7 @@
             <button type="button" class="tab-button active" data-tab="single">Single Report</button>
             <button type="button" class="tab-button" data-tab="gold">Gold Standard</button>
             <button type="button" class="tab-button" data-tab="audio">Create Report (Audio)</button>
+            <button type="button" class="tab-button" data-tab="session">Session Reprocess</button>
         </nav>
 
         <div class="tab-panel" id="tabPanelSingle">
@@ -450,6 +451,86 @@
                 <div class="comparison-grid audio-grid" id="audioResultsGrid"></div>
             </section>
         </div><!-- /tabPanelAudio -->
+
+        <div class="tab-panel" id="tabPanelSession" style="display: none;">
+            <section class="upload-section" id="sessionUploadSection">
+                <div class="upload-card">
+                    <label class="audio-field audio-field-wide">
+                        <span class="audio-field-label">Recording session ID</span>
+                        <input type="text" id="sessionRecordingSessionId" placeholder="UUID from create-report-chunk-inspector / transcriptchunks">
+                    </label>
+                    <p class="audio-file-list-hint" id="sessionStatusHint">
+                        Backend loads chunks for this <code>recordingSessionId</code>, then resolves userId, reportType,
+                        structure, existingText, custom instructions, reference ranges, prescriptions, and speciality
+                        itself. Same Whisper + models pipeline as Create Report (Audio).
+                    </p>
+
+                    <div class="audio-models" id="sessionModels" style="margin-top: 14px;">
+                        <div class="audio-models-header">
+                            <span class="audio-field-label">Models &amp; prompt version</span>
+                            <button type="button" class="audio-clear-button" id="sessionAddModelButton">+ Add model</button>
+                        </div>
+                        <div id="sessionModelRows"></div>
+                        <p class="audio-file-list-hint">
+                            Auto = prompt field picked from the model version. v1 = <code>prompt</code>, v2 = <code>gpt_5_prompt</code>.
+                        </p>
+                    </div>
+
+                    <button class="process-button" id="sessionProcessButton" style="margin-top: 15px">
+                        <span class="button-text">Reprocess Session</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="loading-section" id="sessionLoadingSection" style="display: none;">
+                <div class="loading-card">
+                    <div class="spinner"></div>
+                    <h3 class="loading-title" id="sessionLoadingTitle">Reprocessing session...</h3>
+                    <p class="loading-text" id="sessionLoadingText">Download chunks, Whisper, then models</p>
+                </div>
+            </section>
+
+            <section class="results-section" id="sessionResultsSection" style="display: none;">
+                <div class="results-header">
+                    <h2 class="results-title">Session Reprocess Results</h2>
+                    <button class="new-upload-button" id="sessionNewButton">
+                        <span>Reprocess Another</span>
+                    </button>
+                </div>
+
+                <div class="result-card transcript-card">
+                    <div class="result-header">
+                        <div class="result-title-group">
+                            <div class="result-icon whisper-icon">W</div>
+                            <div>
+                                <h3 class="result-title">Transcript</h3>
+                                <p class="result-subtitle">Whisper (whisper-1)</p>
+                            </div>
+                        </div>
+                        <div class="result-header-actions">
+                            <div class="result-time" id="sessionTranscriptTime">
+                                <span class="time-label">Time:</span>
+                                <span class="time-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-content">
+                        <div class="result-text" id="sessionTranscriptText">
+                            <p class="placeholder-text">Transcript will appear here...</p>
+                        </div>
+                    </div>
+                    <div class="result-footer">
+                        <button class="copy-button" id="sessionCopyTranscript">
+                            <span class="copy-icon">⧉</span>
+                            <span>Copy Output</span>
+                        </button>
+                        <div class="char-count" id="sessionTranscriptCharCount">0 characters</div>
+                    </div>
+                </div>
+
+                <div class="comparison-grid audio-grid" id="sessionResultsGrid"></div>
+            </section>
+        </div><!-- /tabPanelSession -->
     </div>
 
     <script src="app.js"></script>

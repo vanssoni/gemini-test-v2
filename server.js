@@ -11,6 +11,7 @@ const generateService = require('./generate-service');
 const goldStandardService = require('./gold-standard-service');
 const createReportService = require('./create-report-service');
 const userReportSettingsService = require('./user-report-settings-service');
+const recordingSessionService = require('./recording-session-service');
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
 
@@ -759,6 +760,119 @@ app.post('/api/create-report/settings', async (req, res) => {
             error.message
         );
         res.status(isClientError ? 400 : 500).json({ success: false, error: error.message });
+    }
+});
+
+// Reprocess a recording session. Client only sends recordingSessionId (+ optional
+// models). Backend resolves userId / reportType / structure / existingText /
+// custom instructions / reference ranges / prescriptions / speciality from the
+// session + clinician DB — same Whisper + models path as POST /api/create-report.
+app.post('/api/create-report/reprocess-session', async (req, res) => {
+    const startTime = Date.now();
+
+    try {
+        const body = req.body || {};
+        const recordingSessionId = (body.recordingSessionId || '').toString().trim();
+        if (!recordingSessionId) {
+            return res.status(400).json({ success: false, error: 'recordingSessionId is required' });
+        }
+
+        const meta = await recordingSessionService.getSessionMeta(recordingSessionId);
+        const userId = (meta.userId || '').toString().trim() || null;
+        const reportType = meta.reportType || '';
+        const existingText = meta.existingText || '';
+        const reportStructure = meta.reportStructure
+            || (userId && reportType
+                ? await recordingSessionService.findReportStructure(userId, reportType)
+                : null)
+            || '';
+
+        let models = body.models;
+        if (typeof models === 'string' && models.trim()) {
+            try {
+                models = JSON.parse(models);
+            } catch (error) {
+                return res.status(400).json({ success: false, error: 'models must be valid JSON' });
+            }
+        }
+        if (models !== undefined && models !== null && !Array.isArray(models)) {
+            return res.status(400).json({ success: false, error: 'models must be a JSON array' });
+        }
+
+        let options = {
+            models,
+            reportType,
+            reportStructure: reportStructure || undefined,
+            existingText
+        };
+
+        let settingsSource = 'session';
+        if (userId) {
+            // Prefer analysis overrides. If empty, fall back to live user profile
+            // (production executeCreateReportAi path).
+            const fromDb = await userReportSettingsService.getCreateReportOptions(userId);
+            const hasAnalysis = !!(
+                fromDb.customInstructions ||
+                fromDb.referenceRanges ||
+                (Array.isArray(fromDb.prescriptions) && fromDb.prescriptions.length) ||
+                fromDb.clinicianSpeciality
+            );
+
+            if (hasAnalysis) {
+                options = {
+                    ...options,
+                    customInstructions: fromDb.customInstructions,
+                    referenceRanges: fromDb.referenceRanges,
+                    clinicianSpeciality: fromDb.clinicianSpeciality,
+                    prescriptions: fromDb.prescriptions
+                };
+                settingsSource = 'analysis';
+            } else {
+                const live = await recordingSessionService.getLiveUserCreateReportOptions(userId);
+                options = {
+                    ...options,
+                    customInstructions: live.customInstructions,
+                    referenceRanges: live.referenceRanges,
+                    clinicianSpeciality: live.clinicianSpeciality,
+                    prescriptions: live.prescriptions
+                };
+                settingsSource = 'live-user';
+            }
+        }
+
+        const { files, failed, isPartial, orderedCount } =
+            await recordingSessionService.loadSessionAudioFiles(recordingSessionId);
+
+        const { transcript, transcripts, transcriptionTimeMs, results } =
+            await createReportService.createReportFromAudio(files, options);
+
+        res.json({
+            success: true,
+            recordingSessionId,
+            userId,
+            settingsSource,
+            reportType: reportType || '',
+            reportStructureUsed: !!(options.reportStructure),
+            audioFiles: files.map((file) => file.originalname),
+            chunkCount: orderedCount,
+            isPartial,
+            missingChunks: failed.map((f) => f.key),
+            transcript,
+            transcripts,
+            transcriptionTimeMs,
+            results,
+            totalTimeMs: Date.now() - startTime
+        });
+    } catch (error) {
+        console.error('reprocess-session error:', error);
+        const isClientError = /required|No audio found|Unsupported prompt version|needs a model name|Failed to download every|userId must be|User not found|models must/.test(
+            error.message
+        );
+        res.status(isClientError ? 400 : 500).json({
+            success: false,
+            error: error.message,
+            totalTimeMs: Date.now() - startTime
+        });
     }
 });
 

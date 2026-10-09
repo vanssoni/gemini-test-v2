@@ -1302,6 +1302,20 @@ button,
     color: #b91c1c;
 }
 
+.audio-session-meta {
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.45;
+}
+
+.audio-session-meta strong {
+    color: #151932;
+}
+
 .transcript-card .result-text {
     max-height: 260px;
     white-space: pre-wrap;

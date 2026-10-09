@@ -507,7 +507,8 @@ const tabButtons = document.querySelectorAll('.tab-button');
 const tabPanels = {
     single: document.getElementById('tabPanelSingle'),
     gold: document.getElementById('tabPanelGold'),
-    audio: document.getElementById('tabPanelAudio')
+    audio: document.getElementById('tabPanelAudio'),
+    session: document.getElementById('tabPanelSession')
 };
 
 tabButtons.forEach((btn) => {
@@ -888,7 +889,7 @@ const AUDIO_EXTENSIONS = ['wav', 'mp3', 'm4a', 'mp4', 'mpeg', 'mpga', 'oga', 'og
 const AUDIO_MAX_BYTES = 100 * 1024 * 1024;
 
 const AUDIO_MAX_FILES = 20;
-const AUDIO_MODEL_CHOICES = ['gpt-4.1', 'gpt-5.6-sol', 'gpt-6.1'];
+const AUDIO_MODEL_CHOICES = ['gpt-4.1', 'gpt-5.6-sol', 'gpt-6.1-sol'];
 const AUDIO_VERSION_CHOICES = [
     { value: '', label: 'Auto (by model)' },
     { value: 'v1', label: 'v1 - prompt' },
@@ -1187,7 +1188,7 @@ function collectModelSpecs() {
 }
 
 addModelRow('gpt-4.1');
-addModelRow('gpt-6.1');
+addModelRow('gpt-6.1-sol');
 
 function audioOptionValue(id) {
     return (document.getElementById(id).value || '').trim();
@@ -1531,4 +1532,179 @@ function resetAudioToUpload() {
     audioLoadingSection.style.display = 'none';
     audioUploadSection.style.display = '';
     clearAudioFiles();
+}
+
+// ---------- Session Reprocess (recordingSessionId only) ----------
+const sessionRecordingSessionId = document.getElementById('sessionRecordingSessionId');
+const sessionModelRows = document.getElementById('sessionModelRows');
+const sessionAddModelButton = document.getElementById('sessionAddModelButton');
+const sessionProcessButton = document.getElementById('sessionProcessButton');
+const sessionUploadSection = document.getElementById('sessionUploadSection');
+const sessionLoadingSection = document.getElementById('sessionLoadingSection');
+const sessionLoadingTitle = document.getElementById('sessionLoadingTitle');
+const sessionLoadingText = document.getElementById('sessionLoadingText');
+const sessionResultsSection = document.getElementById('sessionResultsSection');
+const sessionResultsGrid = document.getElementById('sessionResultsGrid');
+const sessionNewButton = document.getElementById('sessionNewButton');
+const sessionTranscriptText = document.getElementById('sessionTranscriptText');
+const sessionTranscriptTime = document.getElementById('sessionTranscriptTime');
+const sessionTranscriptCharCount = document.getElementById('sessionTranscriptCharCount');
+const sessionCopyTranscript = document.getElementById('sessionCopyTranscript');
+
+let sessionElapsedTimer = null;
+
+function addSessionModelRow(model = AUDIO_MODEL_CHOICES[0], version = '') {
+    const row = document.createElement('div');
+    row.className = 'audio-model-row';
+
+    const modelSelect = document.createElement('select');
+    modelSelect.className = 'audio-model-select';
+    for (const choice of AUDIO_MODEL_CHOICES) {
+        modelSelect.appendChild(new Option(choice, choice, false, choice === model));
+    }
+
+    const versionSelect = document.createElement('select');
+    versionSelect.className = 'audio-version-select';
+    for (const choice of AUDIO_VERSION_CHOICES) {
+        versionSelect.appendChild(new Option(choice.label, choice.value, false, choice.value === version));
+    }
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'remove-button';
+    removeButton.textContent = '✕';
+    removeButton.addEventListener('click', () => {
+        if (sessionModelRows.children.length > 1) row.remove();
+    });
+
+    row.appendChild(modelSelect);
+    row.appendChild(versionSelect);
+    row.appendChild(removeButton);
+    sessionModelRows.appendChild(row);
+}
+
+function collectSessionModelSpecs() {
+    return Array.from(sessionModelRows.children).map((row) => {
+        const model = row.querySelector('.audio-model-select').value;
+        const version = row.querySelector('.audio-version-select').value;
+        return version ? { model, version } : { model };
+    });
+}
+
+addSessionModelRow('gpt-4.1');
+addSessionModelRow('gpt-6.1-sol');
+
+sessionAddModelButton.addEventListener('click', () => addSessionModelRow());
+sessionProcessButton.addEventListener('click', runSessionReprocess);
+sessionNewButton.addEventListener('click', resetSessionToInput);
+sessionCopyTranscript.addEventListener('click', () => {
+    copyToClipboard(sessionTranscriptText.textContent, sessionCopyTranscript);
+});
+
+function showSessionLoading(recordingSessionId) {
+    sessionUploadSection.style.display = 'none';
+    sessionResultsSection.style.display = 'none';
+    sessionLoadingSection.style.display = '';
+
+    const startedAt = Date.now();
+    const modelLabel = collectSessionModelSpecs()
+        .map((spec) => (spec.version ? `${spec.model} (${spec.version})` : spec.model))
+        .join(' and ');
+    const base = `Session ${recordingSessionId}: download chunks + Whisper, then ${modelLabel}`;
+
+    sessionLoadingTitle.textContent = 'Reprocessing recording session...';
+    sessionLoadingText.textContent = base;
+
+    if (sessionElapsedTimer) clearInterval(sessionElapsedTimer);
+    sessionElapsedTimer = setInterval(() => {
+        sessionLoadingText.textContent = `${base} - ${formatTime(Date.now() - startedAt)} elapsed`;
+    }, 500);
+}
+
+function stopSessionElapsedTimer() {
+    if (sessionElapsedTimer) {
+        clearInterval(sessionElapsedTimer);
+        sessionElapsedTimer = null;
+    }
+}
+
+function renderSessionResults(data) {
+    sessionLoadingSection.style.display = 'none';
+    sessionResultsSection.style.display = '';
+
+    const transcript = data.transcript || '';
+    sessionTranscriptText.textContent = transcript;
+
+    const parts = data.transcripts || [];
+    const metaBits = [
+        data.chunkCount ? `${data.chunkCount} chunks` : null,
+        data.settingsSource ? `settings: ${data.settingsSource}` : null,
+        data.userId ? `userId ${data.userId}` : null,
+        data.reportType ? `reportType ${data.reportType}` : null,
+        data.isPartial ? 'partial' : null
+    ].filter(Boolean);
+
+    sessionTranscriptCharCount.textContent = parts.length > 1
+        ? `${transcript.length} characters from ${parts.length} files · ${metaBits.join(' · ')}`
+        : `${transcript.length} characters · ${metaBits.join(' · ')}`;
+    sessionTranscriptTime.querySelector('.time-value').textContent = formatTime(data.transcriptionTimeMs);
+
+    sessionResultsGrid.innerHTML = '';
+    for (const result of (data.results || [])) {
+        sessionResultsGrid.appendChild(buildAudioResultCard(result));
+    }
+}
+
+function renderSessionError(message) {
+    sessionLoadingSection.style.display = 'none';
+    sessionResultsSection.style.display = '';
+
+    sessionTranscriptText.textContent = '';
+    const errorBox = document.createElement('p');
+    errorBox.className = 'placeholder-text';
+    errorBox.textContent = `Error: ${message}`;
+    sessionTranscriptText.appendChild(errorBox);
+    sessionTranscriptCharCount.textContent = '0 characters';
+    sessionTranscriptTime.querySelector('.time-value').textContent = '-';
+    sessionResultsGrid.innerHTML = '';
+}
+
+function resetSessionToInput() {
+    stopSessionElapsedTimer();
+    sessionResultsSection.style.display = 'none';
+    sessionLoadingSection.style.display = 'none';
+    sessionUploadSection.style.display = '';
+}
+
+async function runSessionReprocess() {
+    const recordingSessionId = (sessionRecordingSessionId.value || '').trim();
+    if (!recordingSessionId) {
+        alert('Enter a recording session ID.');
+        return;
+    }
+
+    showSessionLoading(recordingSessionId);
+
+    try {
+        const response = await fetch(apiUrl('/api/create-report/reprocess-session'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                recordingSessionId,
+                models: collectSessionModelSpecs()
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Request failed with status ${response.status}`);
+        }
+
+        renderSessionResults(data);
+    } catch (error) {
+        console.error('session reprocess error:', error);
+        renderSessionError(error.message);
+    } finally {
+        stopSessionElapsedTimer();
+    }
 }

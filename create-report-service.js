@@ -9,7 +9,7 @@ const USECASE_ID = 'createReportAi';
 // The two models we benchmark against each other. usecase.model from Mongo is
 // ignored on purpose — each run overrides it so both models see the prompt
 // field that belongs to their major version (prompt vs gpt_5_prompt).
-const MODELS = ['gpt-4.1', 'gpt-6.1'];
+const MODELS = ['gpt-4.1', 'gpt-6.1-sol'];
 
 // Prompt versions are decoupled from the model on purpose: the caller picks
 // which usecase field to read, so gpt-4.1 can run the gpt_5_prompt text and
