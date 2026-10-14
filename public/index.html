@@ -528,6 +528,30 @@
                     </div>
                 </div>
 
+                <div class="result-card transcript-card" id="sessionOriginalCard" style="margin-top: 16px;">
+                    <div class="result-header">
+                        <div class="result-title-group">
+                            <div class="result-icon openai-icon">O</div>
+                            <div>
+                                <h3 class="result-title">Original Output</h3>
+                                <p class="result-subtitle">Same text as admin /api/admin/transcript-chunks → text</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-content">
+                        <div class="result-text" id="sessionOriginalText">
+                            <p class="placeholder-text">Original session output will appear here...</p>
+                        </div>
+                    </div>
+                    <div class="result-footer">
+                        <button class="copy-button" id="sessionCopyOriginal">
+                            <span class="copy-icon">⧉</span>
+                            <span>Copy Output</span>
+                        </button>
+                        <div class="char-count" id="sessionOriginalCharCount">0 characters</div>
+                    </div>
+                </div>
+
                 <div class="comparison-grid audio-grid" id="sessionResultsGrid"></div>
             </section>
         </div><!-- /tabPanelSession -->

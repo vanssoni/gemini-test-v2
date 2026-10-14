@@ -1550,6 +1550,9 @@ const sessionTranscriptText = document.getElementById('sessionTranscriptText');
 const sessionTranscriptTime = document.getElementById('sessionTranscriptTime');
 const sessionTranscriptCharCount = document.getElementById('sessionTranscriptCharCount');
 const sessionCopyTranscript = document.getElementById('sessionCopyTranscript');
+const sessionOriginalText = document.getElementById('sessionOriginalText');
+const sessionOriginalCharCount = document.getElementById('sessionOriginalCharCount');
+const sessionCopyOriginal = document.getElementById('sessionCopyOriginal');
 
 let sessionElapsedTimer = null;
 
@@ -1600,6 +1603,9 @@ sessionNewButton.addEventListener('click', resetSessionToInput);
 sessionCopyTranscript.addEventListener('click', () => {
     copyToClipboard(sessionTranscriptText.textContent, sessionCopyTranscript);
 });
+sessionCopyOriginal.addEventListener('click', () => {
+    copyToClipboard(sessionOriginalText.textContent, sessionCopyOriginal);
+});
 
 function showSessionLoading(recordingSessionId) {
     sessionUploadSection.style.display = 'none';
@@ -1649,6 +1655,10 @@ function renderSessionResults(data) {
         : `${transcript.length} characters · ${metaBits.join(' · ')}`;
     sessionTranscriptTime.querySelector('.time-value').textContent = formatTime(data.transcriptionTimeMs);
 
+    const originalOutput = data.originalOutput || '';
+    sessionOriginalText.textContent = originalOutput || '(no finalize text saved for this recording session)';
+    sessionOriginalCharCount.textContent = `${originalOutput.length} characters`;
+
     sessionResultsGrid.innerHTML = '';
     for (const result of (data.results || [])) {
         sessionResultsGrid.appendChild(buildAudioResultCard(result));
@@ -1666,6 +1676,8 @@ function renderSessionError(message) {
     sessionTranscriptText.appendChild(errorBox);
     sessionTranscriptCharCount.textContent = '0 characters';
     sessionTranscriptTime.querySelector('.time-value').textContent = '-';
+    sessionOriginalText.textContent = '';
+    sessionOriginalCharCount.textContent = '0 characters';
     sessionResultsGrid.innerHTML = '';
 }
 

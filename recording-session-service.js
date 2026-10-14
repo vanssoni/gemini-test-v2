@@ -186,6 +186,26 @@ class RecordingSessionService {
         return Buffer.from(arrayBuffer);
     }
 
+    // Same text as GET /api/admin/transcript-chunks → chunks[].text:
+    // the latest finalize row's AI report for this recordingSessionId.
+    async getOriginalOutput(recordingSessionId) {
+        await this.connect();
+        const id = String(recordingSessionId || '').trim();
+        if (!id) return '';
+
+        const doc = await this.chunksCollection()
+            .find({
+                recordingSessionId: id,
+                logType: 'finalize',
+                text: { $exists: true, $nin: [null, ''] }
+            })
+            .sort({ createdAt: -1 })
+            .limit(1)
+            .next();
+
+        return (doc?.text || '').toString();
+    }
+
     // Preview / form prefill — no audio download.
     async getSessionMeta(recordingSessionId) {
         const ordered = await this.findAudioChunks(recordingSessionId);
@@ -197,6 +217,7 @@ class RecordingSessionService {
         const reportType = this.resolveReportType(ordered);
         const existingText = this.resolveExistingText(ordered);
         const reportStructure = await this.findReportStructure(userId, reportType);
+        const originalOutput = await this.getOriginalOutput(recordingSessionId);
 
         const micSessions = [...new Set(ordered.map((c) => c.sessionId))];
         const chunks = ordered.map((c, index) => ({
@@ -220,6 +241,7 @@ class RecordingSessionService {
             reportType,
             existingText,
             reportStructure,
+            originalOutput,
             micSessionCount: micSessions.length,
             chunkCount: ordered.length,
             chunks

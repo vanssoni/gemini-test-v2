@@ -846,6 +846,11 @@ app.post('/api/create-report/reprocess-session', async (req, res) => {
         const { transcript, transcripts, transcriptionTimeMs, results } =
             await createReportService.createReportFromAudio(files, options);
 
+        // Same string as GET /api/admin/transcript-chunks → chunks[].text
+        // (latest finalize row AI output for this recordingSessionId).
+        const originalOutput = meta.originalOutput
+            || await recordingSessionService.getOriginalOutput(recordingSessionId);
+
         res.json({
             success: true,
             recordingSessionId,
@@ -857,6 +862,7 @@ app.post('/api/create-report/reprocess-session', async (req, res) => {
             chunkCount: orderedCount,
             isPartial,
             missingChunks: failed.map((f) => f.key),
+            originalOutput: originalOutput || '',
             transcript,
             transcripts,
             transcriptionTimeMs,
