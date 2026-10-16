@@ -1,34 +1,15 @@
-const { MongoClient, ObjectId } = require('mongodb');
+const { ObjectId } = require('mongodb');
+const { getDb } = require('./mongo');
 
 class GoldStandardService {
-    constructor() {
-        this.client = null;
-        this.db = null;
-    }
-
-    async connect() {
-        if (this.db) {
-            return this.db;
-        }
-
-        if (!process.env.MONGO_URL) {
-            throw new Error('MONGO_URL is not configured');
-        }
-
-        this.client = new MongoClient(process.env.MONGO_URL);
-        await this.client.connect();
-        this.db = this.client.db(process.env.MONGO_DB_NAME || undefined);
-        return this.db;
-    }
-
-    collection() {
+    async collection() {
+        const db = await getDb();
         const name = process.env.MONGO_GOLD_STANDARD_COLLECTION || 'goldStandardReports';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
     async listGoldStandards() {
-        await this.connect();
-        const docs = await this.collection()
+        const docs = await (await this.collection())
             .find({}, { projection: { testsAndConditions: 0 } })
             .toArray();
         return docs.map((doc) => ({
@@ -39,7 +20,6 @@ class GoldStandardService {
     }
 
     async getGoldStandardsByIds(ids) {
-        await this.connect();
         if (!Array.isArray(ids) || ids.length === 0) {
             return [];
         }
@@ -52,7 +32,7 @@ class GoldStandardService {
             }
         }
 
-        const docs = await this.collection().find({ $or: orFilters }).toArray();
+        const docs = await (await this.collection()).find({ $or: orFilters }).toArray();
         const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
 
         return ids

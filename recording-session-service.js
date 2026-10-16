@@ -1,50 +1,35 @@
-const { MongoClient, ObjectId } = require('mongodb');
+const { ObjectId } = require('mongodb');
 const path = require('path');
 const fetch = require('node-fetch');
+const { getDb } = require('./mongo');
 
 // Mirrors onehealth generate.service.reprocessRecordingSession:
 // load transcriptchunks for a recordingSessionId, order by mic→chunkIndex,
 // download each audioUrl, then the caller runs the same create-report pipeline.
 
 class RecordingSessionService {
-    constructor() {
-        this.client = null;
-        this.db = null;
-    }
-
-    async connect() {
-        if (this.db) {
-            return this.db;
-        }
-
-        if (!process.env.MONGO_URL) {
-            throw new Error('MONGO_URL is not configured');
-        }
-
-        this.client = new MongoClient(process.env.MONGO_URL);
-        await this.client.connect();
-        this.db = this.client.db(process.env.MONGO_DB_NAME || undefined);
-        return this.db;
-    }
-
-    chunksCollection() {
+    async chunksCollection() {
+        const db = await getDb();
         const name = process.env.MONGO_TRANSCRIPT_CHUNKS_COLLECTION || 'transcriptchunks';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
-    reportTypesCollection() {
+    async reportTypesCollection() {
+        const db = await getDb();
         const name = process.env.MONGO_USER_REPORT_TYPES_COLLECTION || 'userreporttypes';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
-    usersCollection() {
+    async usersCollection() {
+        const db = await getDb();
         const name = process.env.MONGO_USERS_COLLECTION || 'users';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
-    prescriptionsCollection() {
+    async prescriptionsCollection() {
+        const db = await getDb();
         const name = process.env.MONGO_USER_PRESCRIPTIONS_COLLECTION || 'userprescriptions';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
     toObjectId(userId) {
@@ -83,13 +68,12 @@ class RecordingSessionService {
     }
 
     async findAudioChunks(recordingSessionId) {
-        await this.connect();
         const id = String(recordingSessionId || '').trim();
         if (!id) {
             throw new Error('recordingSessionId is required');
         }
 
-        const raw = await this.chunksCollection()
+        const raw = await (await this.chunksCollection())
             .find({
                 recordingSessionId: id,
                 logType: 'chunk',
@@ -130,9 +114,8 @@ class RecordingSessionService {
             return null;
         }
 
-        await this.connect();
         const _id = this.toObjectId(userId);
-        const doc = await this.reportTypesCollection().findOne({
+        const doc = await (await this.reportTypesCollection()).findOne({
             userId: _id,
             name: String(reportTypeName)
         });
@@ -144,14 +127,13 @@ class RecordingSessionService {
     // Production create-report path: live user profile + prescriptions.
     // Used as fallback when analysis settings are empty.
     async getLiveUserCreateReportOptions(userId) {
-        await this.connect();
         const _id = this.toObjectId(userId);
-        const user = await this.usersCollection().findOne({ _id, deletedAt: null });
+        const user = await (await this.usersCollection()).findOne({ _id, deletedAt: null });
         if (!user) {
             throw new Error(`User not found: ${userId}`);
         }
 
-        const prescriptionDoc = await this.prescriptionsCollection().findOne({ userId: _id });
+        const prescriptionDoc = await (await this.prescriptionsCollection()).findOne({ userId: _id });
 
         return {
             userId: String(user._id),
@@ -189,11 +171,10 @@ class RecordingSessionService {
     // Same text as GET /api/admin/transcript-chunks → chunks[].text:
     // the latest finalize row's AI report for this recordingSessionId.
     async getOriginalOutput(recordingSessionId) {
-        await this.connect();
         const id = String(recordingSessionId || '').trim();
         if (!id) return '';
 
-        const doc = await this.chunksCollection()
+        const doc = await (await this.chunksCollection())
             .find({
                 recordingSessionId: id,
                 logType: 'finalize',

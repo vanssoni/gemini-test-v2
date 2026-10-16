@@ -12,6 +12,7 @@ const goldStandardService = require('./gold-standard-service');
 const createReportService = require('./create-report-service');
 const userReportSettingsService = require('./user-report-settings-service');
 const recordingSessionService = require('./recording-session-service');
+const { mongoContext } = require('./mongo');
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
 
@@ -69,6 +70,7 @@ const goldStandardJobs = new Map();
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static('public'));
+app.use(mongoContext);
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({

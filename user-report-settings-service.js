@@ -1,39 +1,22 @@
-const { MongoClient, ObjectId } = require('mongodb');
+const { ObjectId } = require('mongodb');
+const { getDb } = require('./mongo');
 
 // Super-admin analysis only — NOT the production user profile.
 // One document per clinician userId; shared across all super admins.
 const ALLOWED_REFERENCE_RANGE_TYPES = ['standard', 'functional', 'pediatric', '', null];
 
 class CreateReportAnalysisSettingsService {
-    constructor() {
-        this.client = null;
-        this.db = null;
-    }
-
-    async connect() {
-        if (this.db) {
-            return this.db;
-        }
-
-        if (!process.env.MONGO_URL) {
-            throw new Error('MONGO_URL is not configured');
-        }
-
-        this.client = new MongoClient(process.env.MONGO_URL);
-        await this.client.connect();
-        this.db = this.client.db(process.env.MONGO_DB_NAME || undefined);
-        return this.db;
-    }
-
-    usersCollection() {
+    async usersCollection() {
+        const db = await getDb();
         const name = process.env.MONGO_USERS_COLLECTION || 'users';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
     // Separate model from users / userprescriptions.
-    analysisCollection() {
+    async analysisCollection() {
+        const db = await getDb();
         const name = process.env.MONGO_CREATE_REPORT_ANALYSIS_COLLECTION || 'createReportAnalysisSettings';
-        return this.db.collection(name);
+        return db.collection(name);
     }
 
     toObjectId(userId) {
@@ -122,9 +105,8 @@ class CreateReportAnalysisSettingsService {
     }
 
     async findUser(userId) {
-        await this.connect();
         const _id = this.toObjectId(userId);
-        const user = await this.usersCollection().findOne({ _id, deletedAt: null });
+        const user = await (await this.usersCollection()).findOne({ _id, deletedAt: null });
         if (!user) {
             throw new Error(`User not found: ${userId}`);
         }
@@ -132,9 +114,8 @@ class CreateReportAnalysisSettingsService {
     }
 
     async findAnalysisDoc(userId) {
-        await this.connect();
         const _id = this.toObjectId(userId);
-        return this.analysisCollection().findOne({ userId: _id });
+        return (await this.analysisCollection()).findOne({ userId: _id });
     }
 
     async getSettings(userId) {
@@ -196,7 +177,7 @@ class CreateReportAnalysisSettingsService {
             );
         }
 
-        await this.analysisCollection().updateOne(
+        await (await this.analysisCollection()).updateOne(
             { userId: userObjectId },
             {
                 $set,
