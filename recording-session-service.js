@@ -32,6 +32,12 @@ class RecordingSessionService {
         return db.collection(name);
     }
 
+    async organizationsCollection() {
+        const db = await getDb();
+        const name = process.env.MONGO_ORGANIZATIONS_COLLECTION || 'organizations';
+        return db.collection(name);
+    }
+
     toObjectId(userId) {
         if (!userId || !ObjectId.isValid(String(userId))) {
             throw new Error('userId must be a valid MongoDB ObjectId');
@@ -337,6 +343,110 @@ class RecordingSessionService {
             failed,
             isPartial: failed.length > 0,
             orderedCount: ordered.length
+        };
+    }
+
+    istString(date) {
+        if (!date) return null;
+        return new Date(date).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+    }
+
+    // Audio chunks only, grouped into mic cycles. No finalize rows or health checks.
+    async getChunkInspectorDetail(recordingSessionId) {
+        const id = String(recordingSessionId || '').trim();
+        const docs = await (await this.chunksCollection())
+            .find({ recordingSessionId: id })
+            .sort({ createdAt: 1, chunkIndex: 1 })
+            .toArray();
+
+        if (!docs.length) {
+            return {
+                user: null,
+                userName: null,
+                organization: null,
+                organizationName: null,
+                micSessions: []
+            };
+        }
+
+        const userId = docs[0].userId;
+        const user = userId
+            ? await (await this.usersCollection()).findOne(
+                { _id: userId },
+                { projection: { name: 1, email: 1 } }
+            )
+            : null;
+        const organizationId = docs.find((d) => d.organizationId)?.organizationId || null;
+        const org = organizationId
+            ? await (await this.organizationsCollection()).findOne(
+                { _id: organizationId },
+                { projection: { organizationName: 1 } }
+            )
+            : null;
+
+        const audioDocs = docs.filter((doc) => (doc.logType || 'chunk') === 'chunk' && doc.audioUrl);
+        const bySession = new Map();
+        for (const doc of audioDocs) {
+            if (!bySession.has(doc.sessionId)) bySession.set(doc.sessionId, []);
+            bySession.get(doc.sessionId).push(doc);
+        }
+
+        const micSessions = [...bySession.entries()]
+            .map(([sessionId, rows]) => {
+                const chunks = [...rows].sort((a, b) => {
+                    const byIndex = (a.chunkIndex ?? 0) - (b.chunkIndex ?? 0);
+                    return byIndex !== 0 ? byIndex : new Date(a.createdAt) - new Date(b.createdAt);
+                });
+                const firstAt = chunks[0]?.createdAt || null;
+                const lastAt = chunks[chunks.length - 1]?.createdAt || null;
+                return {
+                    sessionId,
+                    firstReceivedAt: firstAt,
+                    firstAt: this.istString(firstAt),
+                    lastAt: this.istString(lastAt),
+                    chunks: chunks.map((doc) => ({
+                        chunkIndex: doc.chunkIndex,
+                        audioUrl: doc.audioUrl,
+                        createdAt: doc.createdAt || null,
+                        at: this.istString(doc.createdAt)
+                    }))
+                };
+            })
+            .sort((a, b) => new Date(a.firstReceivedAt) - new Date(b.firstReceivedAt))
+            .map((mic, index) => ({
+                mic: index + 1,
+                sessionId: mic.sessionId,
+                firstAt: mic.firstAt,
+                lastAt: mic.lastAt,
+                chunks: mic.chunks
+            }));
+
+        const firstAudio = audioDocs
+            .slice()
+            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))[0];
+        const lastAudio = audioDocs
+            .slice()
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+
+        return {
+            user: user
+                ? { name: user.name || 'Unknown', email: user.email || '' }
+                : null,
+            userName: user?.name || null,
+            organization: org?.organizationName || null,
+            organizationName: org?.organizationName || null,
+            firstAt: this.istString(firstAudio?.createdAt),
+            lastAt: this.istString(lastAudio?.createdAt),
+            micSessions
         };
     }
 }

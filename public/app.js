@@ -1654,6 +1654,7 @@ function renderSessionResults(data) {
         ? `${transcript.length} characters from ${parts.length} files · ${metaBits.join(' · ')}`
         : `${transcript.length} characters · ${metaBits.join(' · ')}`;
     sessionTranscriptTime.querySelector('.time-value').textContent = formatTime(data.transcriptionTimeMs);
+    renderSessionChunks(data);
 
     const originalOutput = data.originalOutput || '';
     sessionOriginalText.textContent = originalOutput || '(no finalize text saved for this recording session)';
@@ -1678,7 +1679,94 @@ function renderSessionError(message) {
     sessionTranscriptTime.querySelector('.time-value').textContent = '-';
     sessionOriginalText.textContent = '';
     sessionOriginalCharCount.textContent = '0 characters';
+    renderSessionChunks(null);
     sessionResultsGrid.innerHTML = '';
+}
+
+function renderSessionChunks(data) {
+    const panel = document.getElementById('sessionChunkPanel');
+    panel.innerHTML = '';
+    const mics = data?.micSessions || [];
+    if (!mics.length) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = '';
+    const head = document.createElement('div');
+    head.className = 'session-chunk-head';
+    const who = [data.userName || data.user?.name, data.organizationName || data.organization]
+        .filter(Boolean)
+        .join(' · ');
+    head.textContent = who || 'Recording session';
+    if (data.firstAt || data.lastAt) {
+        const when = document.createElement('div');
+        when.className = 'audio-file-list-hint';
+        when.textContent = [data.firstAt, data.lastAt].filter(Boolean).join(' → ');
+        head.appendChild(when);
+    }
+    panel.appendChild(head);
+
+    mics.forEach((mic, index) => {
+        const card = document.createElement('div');
+        card.className = 'session-mic';
+
+        const label = document.createElement('div');
+        label.className = 'session-mic-label';
+        const title = document.createElement('span');
+        title.textContent = `Mic ${index + 1}`;
+        label.appendChild(title);
+
+        const time = document.createElement('span');
+        time.className = 'session-pill';
+        time.textContent = `${mic.firstAt || '-'} → ${mic.lastAt || '-'}`;
+        label.appendChild(time);
+        card.appendChild(label);
+
+        const chunks = mic.chunks || (mic.steps || [])
+            .filter((step) => step.kind === 'chunk' || step.audioUrl)
+            .map((step) => ({
+                chunkIndex: step.chunkIndex,
+                audioUrl: step.audioUrl,
+                at: step.at
+            }));
+
+        for (const chunk of chunks) {
+            const stepEl = document.createElement('div');
+            stepEl.className = 'session-step';
+
+            const stepTitle = document.createElement('div');
+            stepTitle.className = 'session-step-title';
+            const name = document.createElement('strong');
+            name.textContent = `Chunk ${chunk.chunkIndex}`;
+            const at = document.createElement('span');
+            at.textContent = chunk.at || '';
+            stepTitle.appendChild(name);
+            stepTitle.appendChild(at);
+            stepEl.appendChild(stepTitle);
+
+            if (chunk.audioUrl) {
+                const fileName = decodeURIComponent(chunk.audioUrl.split('/').pop() || chunk.audioUrl);
+                const fileLink = document.createElement('a');
+                fileLink.className = 'session-audio-file';
+                fileLink.href = chunk.audioUrl;
+                fileLink.target = '_blank';
+                fileLink.rel = 'noopener';
+                fileLink.textContent = fileName;
+                stepEl.appendChild(fileLink);
+
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.preload = 'none';
+                audio.src = chunk.audioUrl;
+                stepEl.appendChild(audio);
+            }
+
+            card.appendChild(stepEl);
+        }
+
+        panel.appendChild(card);
+    });
 }
 
 function resetSessionToInput() {

@@ -1321,6 +1321,92 @@ button,
     white-space: pre-wrap;
 }
 
+.session-chunks {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.session-chunk-head,
+.session-mic {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    padding: 14px 16px;
+}
+
+.session-chunk-head strong {
+    color: #151932;
+}
+
+.session-mic-label {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-weight: 600;
+    color: #151932;
+}
+
+.session-pill {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.session-pill.ok {
+    background: #ccfbf1;
+    color: #0f766e;
+}
+
+.session-pill.bad {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.session-step {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.session-step-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    color: #151932;
+}
+
+.session-audio-file {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #4338ca;
+    word-break: break-all;
+}
+
+.session-step audio {
+    width: 100%;
+    margin-top: 8px;
+}
+
+.session-step-text {
+    margin-top: 8px;
+    max-height: 180px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-size: 13px;
+    color: #334155;
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
 .audio-grid .result-text {
     white-space: pre-wrap;
 }

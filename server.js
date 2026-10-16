@@ -834,11 +834,16 @@ app.post('/api/create-report/reprocess-session', async (req, res) => {
         // (latest finalize row AI output for this recordingSessionId).
         const originalOutput = meta.originalOutput
             || await recordingSessionService.getOriginalOutput(recordingSessionId);
+        const detail = await recordingSessionService.getChunkInspectorDetail(recordingSessionId);
 
         res.json({
             success: true,
             recordingSessionId,
             userId,
+            userName: detail.userName,
+            organizationName: detail.organizationName,
+            user: detail.user,
+            organization: detail.organization,
             settingsSource,
             reportType: reportType || '',
             reportStructureUsed: !!(options.reportStructure),
@@ -850,6 +855,9 @@ app.post('/api/create-report/reprocess-session', async (req, res) => {
             transcript,
             transcripts,
             transcriptionTimeMs,
+            firstAt: detail.firstAt,
+            lastAt: detail.lastAt,
+            micSessions: detail.micSessions,
             results,
             totalTimeMs: Date.now() - startTime
         });
