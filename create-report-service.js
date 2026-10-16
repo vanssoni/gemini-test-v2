@@ -372,6 +372,25 @@ class CreateReportService {
 
         const usecase = await usecaseService.getUsecaseById(USECASE_ID);
 
+        const reportStructure = options.reportStructure || DEFAULT_REPORT_STRUCTURE;
+        console.log('[createReport] placeholders sent to AI', {
+            models: specs,
+            report_type: options.reportType || '',
+            reportStructureSource: options.reportStructure ? 'caller' : 'DEFAULT_REPORT_STRUCTURE',
+            report_structure: this.formatReportStructure(reportStructure),
+            clinician_speciality: options.clinicianSpeciality || '',
+            custom_instructions: options.customInstructions || '',
+            reference_ranges: options.referenceRanges || '',
+            latest_prescription_list: options.prescriptions
+                ? (typeof options.prescriptions === 'string'
+                    ? options.prescriptions
+                    : JSON.stringify(options.prescriptions))
+                : '[]',
+            existingReportText: options.existingText || '',
+            current_date_time: this.currentDateTime(),
+            transcriptChars: transcript.length
+        });
+
         const results = await Promise.all(specs.map(async ({ model, version }) => {
             try {
                 return await this.runModel(usecase, model, transcript, options, version);

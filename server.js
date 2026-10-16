@@ -766,9 +766,10 @@ app.post('/api/create-report/settings', async (req, res) => {
 });
 
 // Reprocess a recording session. Client only sends recordingSessionId (+ optional
-// models). Backend resolves userId / reportType / structure / existingText /
-// custom instructions / reference ranges / prescriptions / speciality from the
-// session + clinician DB — same Whisper + models path as POST /api/create-report.
+// models). Backend resolves userId / reportType / structure / existingText from
+// the session, and custom instructions / reference ranges / prescriptions /
+// speciality from the live user + userprescriptions (same as onehealth
+// executeCreateReportAi). Whisper + models path matches POST /api/create-report.
 app.post('/api/create-report/reprocess-session', async (req, res) => {
     const startTime = Date.now();
 
@@ -801,6 +802,7 @@ app.post('/api/create-report/reprocess-session', async (req, res) => {
             return res.status(400).json({ success: false, error: 'models must be a JSON array' });
         }
 
+        // recordingSessionId means user settings, never the request body.
         let options = {
             models,
             reportType,
@@ -808,38 +810,18 @@ app.post('/api/create-report/reprocess-session', async (req, res) => {
             existingText
         };
 
+        // Same sources as onehealth executeCreateReportAi.
         let settingsSource = 'session';
         if (userId) {
-            // Prefer analysis overrides. If empty, fall back to live user profile
-            // (production executeCreateReportAi path).
-            const fromDb = await userReportSettingsService.getCreateReportOptions(userId);
-            const hasAnalysis = !!(
-                fromDb.customInstructions ||
-                fromDb.referenceRanges ||
-                (Array.isArray(fromDb.prescriptions) && fromDb.prescriptions.length) ||
-                fromDb.clinicianSpeciality
-            );
-
-            if (hasAnalysis) {
-                options = {
-                    ...options,
-                    customInstructions: fromDb.customInstructions,
-                    referenceRanges: fromDb.referenceRanges,
-                    clinicianSpeciality: fromDb.clinicianSpeciality,
-                    prescriptions: fromDb.prescriptions
-                };
-                settingsSource = 'analysis';
-            } else {
-                const live = await recordingSessionService.getLiveUserCreateReportOptions(userId);
-                options = {
-                    ...options,
-                    customInstructions: live.customInstructions,
-                    referenceRanges: live.referenceRanges,
-                    clinicianSpeciality: live.clinicianSpeciality,
-                    prescriptions: live.prescriptions
-                };
-                settingsSource = 'live-user';
-            }
+            const live = await recordingSessionService.getLiveUserCreateReportOptions(userId);
+            options = {
+                ...options,
+                customInstructions: live.customInstructions,
+                referenceRanges: live.referenceRanges,
+                clinicianSpeciality: live.clinicianSpeciality,
+                prescriptions: live.prescriptions
+            };
+            settingsSource = 'live-user';
         }
 
         const { files, failed, isPartial, orderedCount } =

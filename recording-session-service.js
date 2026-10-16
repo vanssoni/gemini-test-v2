@@ -86,15 +86,29 @@ class RecordingSessionService {
         return this.orderChunksByMicThenIndex(raw);
     }
 
-    resolveReportType(orderedChunks, override = '') {
-        if (override && String(override).trim()) {
-            return String(override).trim();
+    // One recordingSessionId can have many chunk rows. The template is the
+    // newest row (createdAt desc) whose payload.reportType is not null/blank.
+    async findLatestReportType(recordingSessionId) {
+        const id = String(recordingSessionId || '').trim();
+        if (!id) {
+            return { reportType: '', userId: null, createdAt: null };
         }
-        return (
-            [...orderedChunks].reverse().find((c) => c.payload?.reportType)?.payload?.reportType ||
-            orderedChunks.find((c) => c.payload?.reportType)?.payload?.reportType ||
-            ''
-        );
+
+        const doc = await (await this.chunksCollection())
+            .find({
+                recordingSessionId: id,
+                'payload.reportType': { $exists: true, $type: 'string', $nin: [null, ''] }
+            })
+            .sort({ createdAt: -1 })
+            .limit(1)
+            .next();
+
+        const reportType = (doc?.payload?.reportType || '').toString().trim();
+        return {
+            reportType,
+            userId: doc?.userId ? String(doc.userId) : null,
+            createdAt: doc?.createdAt || null
+        };
     }
 
     resolveExistingText(orderedChunks, override) {
@@ -124,8 +138,9 @@ class RecordingSessionService {
         return structure || null;
     }
 
-    // Production create-report path: live user profile + prescriptions.
-    // Used as fallback when analysis settings are empty.
+    // Same sources as onehealth executeCreateReportAi:
+    // users.customCreateReportInstructions, users.createReportReferenceRangesType,
+    // users.specialization, and userprescriptions.prescriptions.
     async getLiveUserCreateReportOptions(userId) {
         const _id = this.toObjectId(userId);
         const user = await (await this.usersCollection()).findOne({ _id, deletedAt: null });
@@ -194,8 +209,9 @@ class RecordingSessionService {
             throw new Error('No audio found for this recording session');
         }
 
-        const userId = String(ordered[0].userId);
-        const reportType = this.resolveReportType(ordered);
+        const latestTemplate = await this.findLatestReportType(recordingSessionId);
+        const userId = latestTemplate.userId || String(ordered[0].userId);
+        const reportType = latestTemplate.reportType;
         const existingText = this.resolveExistingText(ordered);
         const reportStructure = await this.findReportStructure(userId, reportType);
         const originalOutput = await this.getOriginalOutput(recordingSessionId);
@@ -220,6 +236,7 @@ class RecordingSessionService {
                 : null,
             patientId: ordered[0].patientId || null,
             reportType,
+            reportTypeCreatedAt: latestTemplate.createdAt,
             existingText,
             reportStructure,
             originalOutput,
